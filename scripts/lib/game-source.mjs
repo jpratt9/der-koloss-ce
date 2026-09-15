@@ -10,7 +10,9 @@
 // engine-*.js methods audio.js copies onto AudioEngine.prototype. The page
 // script is js/main.js plus the modules in js/main/ that it imports. The co-op
 // connection is js/net.js plus js/net/: the classes whose methods net.js copies
-// onto Net.prototype, and the names they share. The post stack's GLSL is
+// onto Net.prototype, and the names they share. The effects are js/fx.js plus
+// js/fx/: the classes whose methods fx.js copies onto FX.prototype, and the
+// surface table and sprite textures they share. The post stack's GLSL is
 // js/render/shaders.js plus the modules in js/render/shaders/ that it
 // re-exports. The stylesheet is style.css plus the files in style/, which
 // index.html links in name order. A check reads all of one as a single string,
@@ -68,6 +70,11 @@ export function readMainSource() {
 /** js/net.js, then every .js file under js/net/ in path order, joined with newlines. */
 export function readNetSource() {
   return readSplitSource(js, 'net', '.js');
+}
+
+/** js/fx.js, then every .js file under js/fx/ in path order, joined with newlines. */
+export function readFxSource() {
+  return readSplitSource(js, 'fx', '.js');
 }
 
 /** js/render/shaders.js, then every .js file under js/render/shaders/ in path order, joined with newlines. */
