@@ -109,10 +109,28 @@ export function ringGeo(ri, ro, seg = 20) {
   return geo('ring', [ri, ro, seg], () => new THREE.RingGeometry(ri, ro, seg));
 }
 
-/** Lathe a profile given as [radius, axialPosition] pairs, axis along +Z. */
+/**
+ * Lathe a profile given as [radius, axialPosition] pairs, axis along +Z.
+ *
+ * The direction a profile is written in decides which way every face points:
+ * three only winds a lathe outward when the outline, closed along the axis,
+ * runs counter-clockwise in (radius, axial). Every weapon material is
+ * single-sided, so a profile written the other way round was drawn
+ * inside-out — its near wall culled, the eye looking straight through it at
+ * whatever was inside. That is how the Panzerschreck's warhead showed through
+ * its tube wall and the MP40's receiver rings hung round it like loose hoops,
+ * and 21 lathes across 13 weapons were written that way. The winding is fixed
+ * here once rather than trusted to the order every outline was typed in.
+ */
 export function latheGeo(id, pts, seg = 20) {
   return geo('lathe', [id, seg], () => {
-    const v = pts.map(([r, z]) => new THREE.Vector2(Math.max(1e-5, r), z));
+    let area = 0;   // shoelace, with the outline closed along the axis
+    const loop = [[0, pts[0][1]], ...pts, [0, pts[pts.length - 1][1]]];
+    for (let i = 0; i < loop.length; i++) {
+      const [r0, z0] = loop[i], [r1, z1] = loop[(i + 1) % loop.length];
+      area += r0 * z1 - r1 * z0;
+    }
+    const v = (area < 0 ? [...pts].reverse() : pts).map(([r, z]) => new THREE.Vector2(Math.max(1e-5, r), z));
     const g = new THREE.LatheGeometry(v, seg);
     g.rotateX(Math.PI / 2);   // Y-axis lathe -> Z-forward part
     g.computeVertexNormals();
@@ -547,9 +565,12 @@ export function redDot(matBody, matGlass, matLens, matDot, { aimY = 0, z = 0, r 
 /** Telescopic sight with mounts, eyepiece, objective bell and a lens glint. */
 export function scope(matBody, matLens, { aimY = 0, z = 0, len = 0.26, r = 0.019, bell = 0.03 } = {}) {
   const g = new THREE.Group();
+  // Open at both ends, a thin lip in front of each lens. Capped, the tube hid
+  // its own glass: the lenses are seated inside it, and the caps were only ever
+  // see-through because the profile used to be drawn inside-out.
   g.add(mesh(latheGeo('scp' + len + '_' + r + '_' + bell, [
-    [0.001, len / 2], [r * 1.25, len / 2], [r * 1.25, len * 0.4], [r, len * 0.34],
-    [r, -len * 0.12], [bell, -len * 0.26], [bell, -len / 2], [0.001, -len / 2],
+    [r * 1.12, len / 2], [r * 1.25, len / 2], [r * 1.25, len * 0.4], [r, len * 0.34],
+    [r, -len * 0.12], [bell, -len * 0.26], [bell, -len / 2], [bell * 0.9, -len / 2],
   ], 20), matBody));
   // Lenses seated IN the tube. At 0.9x/1.1x they sat ~3mm shy of the tube wall
   // and 2.5mm behind the end caps — a hairline ring of daylight round both ends

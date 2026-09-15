@@ -209,6 +209,10 @@ function corpseAtlas() {
 }
 
 const eyeGeo = new THREE.SphereGeometry(0.03, 6, 6);
+// How far ahead of an eyelid bone the glow sits. The front of the eyeball the
+// lid closes over is 0.066 ahead of the bone, so this stands a little over half
+// the glow's radius out through it.
+const EYE_LID_DEPTH = 0.054;
 // Eyes are authored ABOVE the bloom threshold (~1.15 luminance) so they
 // actually bloom in the HDR stack instead of sitting flat.
 const eyeGlowMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffa830).multiplyScalar(1.9), toneMapped: false });
@@ -310,7 +314,18 @@ export class ZombieVisual {
     if (this.headBone) {
       for (const s of [-1, 1]) {
         const e = new THREE.Mesh(eyeGeo, eyeGlowMat);
-        e.position.set(0.055 * s, 0.065, 0.115);
+        // The Basic model has eyelid bones, and they sit at the centre of its
+        // eyeballs. The fixed offset below lands in the Chubby's sockets but
+        // inside the Basic's head, down by its nose, where the eyes never
+        // showed; so where there are lids the glow goes out through the front
+        // of the eyeball between them.
+        const lid = this.inner.getObjectByName(s < 0 ? 'EyelidR' : 'EyelidL');
+        if (lid) {
+          lid.getWorldPosition(e.position).z += EYE_LID_DEPTH;
+          this.headBone.worldToLocal(e.position);
+        } else {
+          e.position.set(0.055 * s, 0.065, 0.115);
+        }
         e.scale.setScalar(1.0);
         this.headBone.add(e);
       }

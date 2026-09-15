@@ -862,8 +862,12 @@ export function buildViewmodel(id, pap) {
       // Grip frame raked back, with checkered walnut panels and a lanyard loop.
       const grip = new THREE.Group();
       grip.add(mesh(bevelBoxGeo(0.036, 0.112, 0.052, 0.009), STM, 0, 0, 0));
+      // The grip frame runs on up INTO the frame. Raked back, the grip's top
+      // stopped 7-13mm under the frame's belly, and the panels a good deal
+      // lower, so the whole grip hung below the pistol.
+      grip.add(mesh(bevelBoxGeo(0.036, 0.032, 0.050, 0.004), STM, 0, 0.066, 0));
       for (const sx of [1, -1]) {
-        grip.add(mesh(bevelBoxGeo(0.0055, 0.098, 0.050, 0.004), CK, sx * 0.0195, -0.002, 0.001));
+        grip.add(mesh(bevelBoxGeo(0.0055, 0.112, 0.050, 0.004), CK, sx * 0.0195, 0.005, 0.001));
         grip.add(screw(STL, { r: 0.0035, x: sx * 0.0225, y: 0.026, z: 0.002, axis: 'x' }));
         grip.add(screw(STL, { r: 0.0035, x: sx * 0.0225, y: -0.030, z: 0.002, axis: 'x' }));
       }
@@ -893,8 +897,10 @@ export function buildViewmodel(id, pap) {
       for (let i = 0; i < 9; i++) {   // vent rib slots
         P('rib_v' + i, mesh(bevelBoxGeo(0.018, 0.004, 0.008, 0.0008), WM.cavity, 0, 0.049, -0.075 - i * 0.028));
       }
+      // Back as far as the cylinder's front face, which is what an ejector rod
+      // runs out of. It stopped 30mm short, with daylight under the barrel.
       P('ejector', at(mesh(latheGeo('magnum_ej', [
-        [0.004, -0.16], [0.011, -0.16], [0.011, 0.02], [0.004, 0.02],
+        [0.004, -0.16], [0.011, -0.16], [0.011, 0.052], [0.004, 0.052],
       ], 14), STD), 0, 0.012, -0.10));
       P('frame', profileZY('magnum_frame', [
         [0.078, 0.012], [0.078, 0.056], [0.030, 0.058], [-0.044, 0.050], [-0.044, -0.008],
@@ -997,11 +1003,18 @@ export function buildViewmodel(id, pap) {
       drum.add(mesh(latheGeo('tommy_drum', [
         [0.0, 0.024], [0.062, 0.024], [0.070, 0.016], [0.070, -0.016], [0.062, -0.024], [0.0, -0.024],
       ], 24), SH, 0, 0, 0, Math.PI / 2));
-      drum.add(mesh(torusGeo(0.050, 0.005, 5, 20), STD, 0, 0, 0.020, 0, Math.PI / 2));
+      // The drum's axis is THIS group's Y (weapon X once it is stood on edge
+      // below), so its face rings lie flat in XZ and the key runs along Y. They
+      // were laid out along Z: the ring stood a quarter-turn off the face, a hoop
+      // through the drum and out both sides of the receiver, and the key and its
+      // wing were buried inside the drum.
+      for (const fy of [0.023, -0.023]) drum.add(mesh(torusGeo(0.050, 0.005, 5, 20), STD, 0, fy, 0, Math.PI / 2));
       // Wind key, SEATED in the drum face. It used to stand 13mm proud of it.
-      drum.add(mesh(cylGeo(0.014, 0.012, 0.056, 12), STD, 0, 0, 0.006, Math.PI / 2));
-      drum.add(mesh(bevelBoxGeo(0.030, 0.006, 0.010, 0.001), STL, 0, 0, 0.028));
-      P('mag', at(drum, 0, -0.082, -0.055, 0, 0, Math.PI / 2));
+      drum.add(mesh(cylGeo(0.014, 0.012, 0.056, 12), STD, 0, 0.006, 0));
+      drum.add(mesh(bevelBoxGeo(0.030, 0.010, 0.006, 0.001), STL, 0, 0.032, 0));
+      // Forward of the trigger guard, where a Thompson's drum slides in. At
+      // z -0.055 the guard's front strut ran straight through it.
+      P('mag', at(drum, 0, -0.078, -0.095, 0, 0, Math.PI / 2));
       // Wooden forend. It is CARRIED on a yoke that reaches up to the finned
       // barrel — the way a Thompson's forend is bolted to the frame — instead
       // of hanging 22mm below the gun with nothing joining it. That gap, plus
@@ -1065,11 +1078,14 @@ export function buildViewmodel(id, pap) {
         d.add(mesh(latheGeo('ppsh_drum', [
           [0.0, 0.026], [0.074, 0.026], [0.083, 0.016], [0.083, -0.016], [0.074, -0.026], [0.0, -0.026],
         ], 26), SH, 0, 0, 0, Math.PI / 2));
-        d.add(mesh(torusGeo(0.060, 0.005, 5, 22), STD, 0, 0, 0.022, 0, Math.PI / 2));
-        d.add(mesh(torusGeo(0.034, 0.005, 5, 18), STD, 0, 0, 0.022, 0, Math.PI / 2));
+        // Same frame as the Thompson's drum: the axis is this group's Y, and
+        // weapon "up" is its +X. Both rings stood a quarter-turn off the face
+        // and the latch block sat 76mm out to one side of the gun.
+        d.add(mesh(torusGeo(0.060, 0.005, 5, 22), STD, 0, 0.025, 0, Math.PI / 2));
+        d.add(mesh(torusGeo(0.034, 0.005, 5, 18), STD, 0, 0.025, 0, Math.PI / 2));
         // Wind spindle, run THROUGH the drum rather than perched on its face.
-        d.add(mesh(cylGeo(0.013, 0.011, 0.060, 12), STD, 0, 0, 0.006, Math.PI / 2));
-        d.add(mesh(bevelBoxGeo(0.026, 0.032, 0.030, 0.004), SH, 0, 0.076, 0));
+        d.add(mesh(cylGeo(0.013, 0.011, 0.060, 12), STD, 0, 0.006, 0));
+        d.add(mesh(bevelBoxGeo(0.032, 0.026, 0.030, 0.004), SH, 0.076, 0, 0));
         return d;
       })(), 0, -0.088, -0.120, 0, 0, Math.PI / 2));
       // One-piece stock. It runs forward under the trigger group to the
@@ -1104,8 +1120,10 @@ export function buildViewmodel(id, pap) {
       P('jacket_tip', at(mesh(latheGeo('t100_tip', [
         [0.012, -0.02], [0.023, -0.02], [0.024, -0.008], [0.024, 0.016], [0.020, 0.024], [0.012, 0.024],
       ], 16), STL), 0, 0.028, -0.580));
+      // Straight down its magwell. A 0.3rad roll swung the bottom of it 44mm
+      // out past the right side of the receiver.
       P('mag', at(magazine(SH, STD, { w: 0.030, h: 0.150, d: 0.048, curve: 0.16, taper: 0.94, ribs: 2 }),
-        0.004, -0.036, -0.100, 0.22, 0, 0.30));
+        0.004, -0.036, -0.100, 0.22));
       P('magwell', at(mesh(bevelBoxGeo(0.038, 0.030, 0.056, 0.005), SH, 0, 0, 0), 0.002, -0.026, -0.096, 0.22));
       P('stock', profileZY('t100_stock', [
         [0.130, -0.048], [0.180, -0.060], [0.360, -0.076], [0.388, -0.066], [0.388, 0.026],
@@ -1236,9 +1254,9 @@ export function buildViewmodel(id, pap) {
     }
     case 'kar98': {
       P('stock', profileZY('kar98_stock', [
-        [-0.300, -0.020], [-0.300, 0.014], [-0.060, 0.020], [0.060, 0.016], [0.130, -0.008],
-        [0.250, -0.040], [0.360, -0.062], [0.470, -0.070], [0.500, -0.058], [0.500, 0.026],
-        [0.400, 0.028], [0.230, 0.010], [0.140, 0.008], [0.060, -0.026], [-0.060, -0.034], [-0.300, -0.040],
+        [-0.300, -0.040], [-0.300, 0.014], [-0.060, 0.020], [0.060, 0.016], [0.140, 0.006],
+        [0.230, 0.010], [0.400, 0.028], [0.500, 0.026], [0.500, -0.058], [0.470, -0.070],
+        [0.360, -0.062], [0.250, -0.050], [0.150, -0.046], [0.095, -0.036], [-0.060, -0.034],
       ], 0.052, W, 0, 0, 0, 0.005));
       P('butt', profileZY('kar98_butt', [
         [0.496, -0.064], [0.522, -0.058], [0.522, 0.024], [0.496, 0.026],
@@ -1266,10 +1284,12 @@ export function buildViewmodel(id, pap) {
       knob.add(mesh(bevelBoxGeo(0.010, 0.010, 0.046, 0.002), STL, 0, 0, -0.014, 0.55));
       knob.add(mesh(sphereGeo(0.0125, 10, 8), STL, 0, -0.024, -0.030));
       P('bolt_knob', at(knob, 0.024, 0.032, -0.006));
+      // Ahead of the trigger guard, like the Mosin's: the guard hangs at z 0.015
+      // to 0.089, and a magazine spanning -0.020 to 0.090 had swallowed it whole.
       P('mag', profileZY('kar98_mag', [
-        [-0.020, -0.024], [-0.020, -0.070], [0.060, -0.076], [0.090, -0.062], [0.090, -0.022],
+        [-0.130, -0.024], [-0.130, -0.070], [-0.050, -0.076], [-0.020, -0.062], [-0.020, -0.022],
       ], 0.044, ST, 0, 0, 0));
-      P('floorplate', mesh(bevelBoxGeo(0.046, 0.008, 0.086, 0.002), STD, 0, -0.078, 0.032));
+      P('floorplate', mesh(bevelBoxGeo(0.046, 0.008, 0.086, 0.002), STD, 0, -0.078, -0.078));
       P('guard', at(triggerGroup(ST, { len: 0.060, drop: 0.030, thick: 0.012 }), 0, -0.024, 0.052));
       P('band1', at((() => {
         const b = new THREE.Group();
@@ -1295,9 +1315,9 @@ export function buildViewmodel(id, pap) {
     }
     case 'gewehr43': {
       P('stock', profileZY('g43_stock', [
-        [-0.230, -0.018], [-0.230, 0.016], [-0.040, 0.020], [0.060, 0.014], [0.140, -0.010],
-        [0.280, -0.044], [0.400, -0.064], [0.430, -0.052], [0.430, 0.026],
-        [0.330, 0.028], [0.180, 0.010], [0.080, -0.028], [-0.040, -0.036], [-0.230, -0.040],
+        [-0.230, -0.040], [-0.230, 0.016], [-0.040, 0.020], [0.060, 0.014], [0.130, 0.004],
+        [0.200, 0.010], [0.330, 0.028], [0.430, 0.026], [0.430, -0.052],
+        [0.400, -0.064], [0.280, -0.052], [0.160, -0.044], [0.100, -0.036], [-0.040, -0.036],
       ], 0.050, W, 0, 0, 0, 0.005));
       P('butt', profileZY('g43_butt', [
         [0.426, -0.058], [0.452, -0.052], [0.452, 0.024], [0.426, 0.026],
@@ -1332,9 +1352,9 @@ export function buildViewmodel(id, pap) {
     }
     case 'm1a1': {
       P('stock', profileZY('m1a1_stock', [
-        [-0.260, -0.016], [-0.260, 0.014], [-0.030, 0.018], [0.070, 0.010], [0.150, -0.014],
-        [0.300, -0.044], [0.410, -0.058], [0.440, -0.046], [0.440, 0.026],
-        [0.340, 0.028], [0.190, 0.008], [0.090, -0.026], [-0.030, -0.032], [-0.260, -0.036],
+        [-0.260, -0.036], [-0.260, 0.014], [-0.030, 0.018], [0.070, 0.010], [0.140, 0.002],
+        [0.210, 0.008], [0.340, 0.028], [0.440, 0.026], [0.440, -0.046],
+        [0.410, -0.058], [0.300, -0.050], [0.170, -0.042], [0.100, -0.034], [-0.030, -0.032],
       ], 0.046, W, 0, 0, 0, 0.005));
       P('butt', profileZY('m1a1_butt', [
         [0.436, -0.052], [0.460, -0.046], [0.460, 0.024], [0.436, 0.026],
@@ -1367,9 +1387,9 @@ export function buildViewmodel(id, pap) {
     }
     case 'm1garand': {
       P('stock', profileZY('garand_stock', [
-        [-0.300, -0.018], [-0.300, 0.016], [-0.040, 0.020], [0.070, 0.014], [0.150, -0.010],
-        [0.290, -0.046], [0.410, -0.068], [0.442, -0.056], [0.442, 0.026],
-        [0.340, 0.028], [0.190, 0.010], [0.090, -0.028], [-0.040, -0.036], [-0.300, -0.042],
+        [-0.300, -0.042], [-0.300, 0.016], [-0.040, 0.020], [0.070, 0.014], [0.140, 0.004],
+        [0.210, 0.010], [0.340, 0.028], [0.442, 0.026], [0.442, -0.056],
+        [0.410, -0.068], [0.300, -0.046], [0.200, -0.040], [0.110, -0.038], [-0.040, -0.036],
       ], 0.052, W, 0, 0, 0, 0.005));
       P('butt', profileZY('garand_butt', [
         [0.438, -0.062], [0.464, -0.056], [0.464, 0.024], [0.438, 0.026],
@@ -1492,11 +1512,23 @@ export function buildViewmodel(id, pap) {
     }
     case 'mosin':
     case 'springfield': {
+      // One bolt-action skeleton, two rifles. They used to share every part but
+      // the bolt handle's angle, so the Springfield was a Mosin-Nagant under
+      // another name. What tells them apart at a glance is kept apart here: the
+      // Mosin's box magazine ahead of the trigger guard and its fat PU scope
+      // reaching out over the barrel; the M1903A4's pistol-grip stock, flush
+      // floorplate, handguard, two bands and long slim Weaver tube sitting
+      // back over the receiver.
       const isMosin = id === 'mosin';
-      P('stock', profileZY(id + '_stock', [
-        [-0.320, -0.018], [-0.320, 0.012], [-0.040, 0.018], [0.070, 0.012], [0.150, -0.012],
-        [0.310, -0.046], [0.470, -0.068], [0.505, -0.056], [0.505, 0.024],
-        [0.400, 0.026], [0.200, 0.008], [0.090, -0.028], [-0.040, -0.034], [-0.320, -0.038],
+      P('stock', profileZY(id + '_stock', isMosin ? [
+        [-0.320, -0.038], [-0.320, 0.012], [-0.040, 0.018], [0.070, 0.012], [0.140, 0.002],
+        [0.220, 0.008], [0.400, 0.026], [0.505, 0.024], [0.505, -0.056],
+        [0.470, -0.068], [0.320, -0.054], [0.180, -0.046], [0.100, -0.036], [-0.040, -0.034],
+      ] : [
+        [-0.320, -0.038], [-0.320, 0.012], [-0.040, 0.018], [0.070, 0.012], [0.130, 0.004],
+        [0.200, 0.010], [0.380, 0.026], [0.505, 0.024], [0.505, -0.056],
+        [0.470, -0.068], [0.330, -0.056], [0.205, -0.050], [0.165, -0.062], [0.135, -0.068],
+        [0.105, -0.060], [0.085, -0.036], [-0.040, -0.034],
       ], 0.048, W, 0, 0, 0, 0.005));
       P('butt', profileZY(id + '_butt', [
         [0.501, -0.062], [0.526, -0.056], [0.526, 0.022], [0.501, 0.024],
@@ -1504,13 +1536,27 @@ export function buildViewmodel(id, pap) {
       P('forend', profileZY(id + '_fore', [
         [-0.310, -0.022], [-0.600, -0.014], [-0.630, -0.004], [-0.630, 0.014], [-0.310, 0.020],
       ], 0.046, W, 0, 0.004, 0));
-      P('barrel', at(barrel(ST, { r: 0.0112, bore: 0.0054, len: 0.50, boreDepth: 0.06 }), 0, 0.028, -0.680));
+      // Back INTO the receiver. It stopped 23cm short of it, so between the
+      // receiver ring and the forend band there was no barrel at all, and the
+      // front scope mount stood over bare wood.
+      P('barrel', at(barrel(ST, { r: 0.0112, bore: 0.0054, len: 0.74, boreDepth: 0.06 }), 0, 0.028, -0.560));
       P('receiver', at(mesh(latheGeo(id + '_rcv', [
         [0.0, 0.110], [0.024, 0.110], [0.024, -0.030], [0.020, -0.070], [0.020, -0.110], [0.0, -0.110],
       ], 20), ST), 0, 0.028, -0.090));
-      P('scope', at(scope(STD, WM.lens, { len: 0.26, r: 0.019, bell: 0.030 }), 0, A, -0.230));
-      P('mount_f', mesh(bevelBoxGeo(0.016, 0.026, 0.020, 0.002), STD, 0, A - 0.030, -0.310));
-      P('mount_r', mesh(bevelBoxGeo(0.016, 0.026, 0.020, 0.002), STD, 0, A - 0.030, -0.120));
+      const scopeZ = isMosin ? -0.230 : -0.100;
+      if (isMosin) {
+        P('scope', at(scope(STD, WM.lens, { len: 0.26, r: 0.019, bell: 0.030 }), 0, A, scopeZ));
+        // Out ahead of the receiver there is only barrel under the front mount,
+        // so it reaches down and bites the barrel rather than ending in air.
+        P('mount_f', mesh(bevelBoxGeo(0.016, 0.038, 0.020, 0.002), STD, 0, A - 0.036, -0.310));
+        P('mount_r', mesh(bevelBoxGeo(0.016, 0.026, 0.020, 0.002), STD, 0, A - 0.030, -0.120));
+      } else {
+        // Weaver 330: a long 3/4in tube, hardly any objective bell, both rings
+        // on bases screwed to the receiver.
+        P('scope', at(scope(STD, WM.lens, { len: 0.30, r: 0.0125, bell: 0.016 }), 0, A, scopeZ));
+        P('mount_f', mesh(bevelBoxGeo(0.016, 0.026, 0.020, 0.002), STD, 0, A - 0.030, -0.190));
+        P('mount_r', mesh(bevelBoxGeo(0.016, 0.026, 0.020, 0.002), STD, 0, A - 0.030, -0.028));
+      }
       const bh = new THREE.Group();
       bh.add(mesh(bevelBoxGeo(0.010, 0.010, 0.052, 0.002), ST, 0, 0, -0.020));
       P('bolt_h', at(bh, 0.022, 0.034, -0.050, 0, 0, isMosin ? -0.9 : -0.4));
@@ -1530,15 +1576,31 @@ export function buildViewmodel(id, pap) {
         k.add(arm);
         return k;
       })(), 0.062, isMosin ? 0.010 : 0.026, -0.062));
-      P('mag', profileZY(id + '_mag', [
-        [-0.040, -0.022], [-0.040, -0.076], [0.050, -0.082], [0.080, -0.066], [0.080, -0.020],
+      // The Mosin's box hangs AHEAD of the trigger guard. It used to fill the
+      // space the guard hangs in, and the guard disappeared inside it. The
+      // Springfield's magazine is inside the stock, down to a flush floorplate.
+      P('mag', profileZY(id + '_mag', isMosin ? [
+        [-0.160, -0.022], [-0.160, -0.076], [-0.070, -0.082], [-0.040, -0.066], [-0.040, -0.020],
+      ] : [
+        [-0.095, -0.018], [-0.095, -0.038], [0.000, -0.038], [0.000, -0.018],
       ], 0.042, ST, 0, 0, 0));
       P('guard', at(triggerGroup(ST, { len: 0.058, drop: 0.030, thick: 0.012 }), 0, -0.022, 0.040));
-      P('band', at(mesh(latheGeo(id + '_band', [
-        [0.024, -0.012], [0.029, -0.012], [0.029, 0.012], [0.024, 0.012],
-      ], 18), STD), 0, 0.012, -0.560));
+      if (isMosin) {
+        P('band', at(mesh(latheGeo(id + '_band', [
+          [0.024, -0.012], [0.029, -0.012], [0.029, 0.012], [0.024, 0.012],
+        ], 18), STD), 0, 0.012, -0.560));
+      } else {
+        P('handguard', profileZY('springfield_hg', [
+          [-0.200, 0.024], [-0.585, 0.017], [-0.585, 0.044], [-0.200, 0.048],
+        ], 0.040, W, 0, 0, 0));
+        // Square-sided bands clamping handguard to stock: the lower one carries
+        // the sling swivel, the upper one is the M1903's long double band.
+        P('band', mesh(bevelBoxGeo(0.052, 0.068, 0.020, 0.004), STD, 0, 0.015, -0.505));
+        P('band_u', mesh(bevelBoxGeo(0.052, 0.062, 0.046, 0.004), STD, 0, 0.018, -0.585));
+        P('sling_f', slingLoop(STD, { r: 0.009, x: 0, y: -0.030, z: -0.505, ry: Math.PI / 2 }));
+      }
       P('sight_f', frontSight(STD, { aimY: A, z: -0.900, ears: 'hood', baseW: 0.022, baseH: 0.010, mount: 0.039, band: 0.0112 }));
-      P('sight_r', at(new THREE.Group(), 0, A, -0.230));
+      P('sight_r', at(new THREE.Group(), 0, A, scopeZ));
       P('hand_r', hand(0.016, -0.070, 0.092, -0.30, 0, { curl: 0.9 }));
       P('hand_l', supportHand(0.000, -0.026, -0.440, { pitch: 0.05 }));
       muzzleZ = -0.935;
@@ -1825,16 +1887,20 @@ export function buildViewmodel(id, pap) {
       }
       barrels.add(mesh(bevelBoxGeo(0.050, 0.012, 0.50, 0.002), STD, 0, 0.018, -0.290));   // top rib
       barrels.add(mesh(bevelBoxGeo(0.050, 0.010, 0.50, 0.002), STD, 0, -0.018, -0.290));  // bottom rib
-      barrels.add(mesh(bevelBoxGeo(0.052, 0.046, 0.070, 0.006), ST, 0, 0, -0.020));       // breech block
-      for (const sx of [-0.021, 0.021]) {  // chambers, visible when broken open
-        barrels.add(mesh(cylGeo(0.0138, 0.0138, 0.030, 14, true), WM.bore, sx, 0, 0.006, Math.PI / 2));
-      }
+      // Breech block. No chamber mouths behind it: the breech face sits inside
+      // the action body whether the gun is open or shut, so all the two dark
+      // chamber tubes ever showed was their outer wall, punched out through the
+      // side of the receiver as a square black port.
+      barrels.add(mesh(bevelBoxGeo(0.052, 0.046, 0.070, 0.006), ST, 0, 0, -0.020));
       barrels.add(mesh(torusGeo(0.019, 0.003, 5, 16), STL, -0.021, 0, -0.550));
       barrels.add(mesh(torusGeo(0.019, 0.003, 5, 16), STL, 0.021, 0, -0.550));
       P('barrels', at(barrels, 0, 0.010, 0.010));
       P('forend', at((() => {
         const f = new THREE.Group();
-        f.add(mesh(bevelBoxGeo(0.052, 0.038, 0.190, 0.010), W, 0, 0, 0));
+        // Tall enough to take the barrels INTO its top, as a splinter forend
+        // does. Stopping at the bottom rib, it read as a board hanging under
+        // the barrels with a dark gap along its whole length.
+        f.add(mesh(bevelBoxGeo(0.052, 0.051, 0.190, 0.010), W, 0, 0.0065, 0));
         f.add(mesh(bevelBoxGeo(0.054, 0.024, 0.110, 0.006), CK, 0, -0.006, 0));
         f.add(mesh(bevelBoxGeo(0.014, 0.014, 0.030, 0.002), STD, 0, -0.018, -0.086));
         return f;
@@ -1873,8 +1939,11 @@ export function buildViewmodel(id, pap) {
       break;
     }
     case 'panzerschreck': {
+      // A real tube: outer wall, muzzle lip and an 88mm bore, open at the back
+      // where the rocket goes in. The rocket below lives INSIDE it.
       P('tube', at(mesh(latheGeo('pz_tube', [
-        [0.0, 0.56], [0.048, 0.56], [0.048, -0.50], [0.056, -0.54], [0.062, -0.56], [0.036, -0.56],
+        [0.044, 0.56], [0.048, 0.56], [0.048, -0.50], [0.056, -0.54], [0.062, -0.56], [0.044, -0.56],
+        [0.044, 0.56],
       ], 24), ST), 0, 0.040, -0.280));
       for (let i = 0; i < 5; i++) {
         P('tube_band' + i, at(mesh(torusGeo(0.0495, 0.004, 5, 22), STD), 0, 0.040, -0.72 + i * 0.24));
@@ -1882,11 +1951,14 @@ export function buildViewmodel(id, pap) {
       P('bell', at(mesh(latheGeo('pz_bell', [
         [0.049, 0.09], [0.055, 0.06], [0.070, -0.03], [0.076, -0.06], [0.070, -0.062], [0.050, -0.02], [0.045, 0.09],
       ], 24), STD), 0, 0.040, -0.800));
-      // The quarter-turn belongs on at(), which SETS rotation rather than adding
-      // to it — passed to mesh() instead it was silently thrown away, and the
-      // bore stood on end as a 30cm rod through the tube and 19cm into the sky,
-      // dead on the centreline where the sight line runs.
-      P('bore', at(mesh(cylGeo(0.046, 0.046, 0.30, 20, true), WM.bore), 0, 0.040, -0.700, Math.PI / 2));
+      // A dark liner just inside the bore at the muzzle end. It is a lathed ring,
+      // already running along Z, rather than an open cylinder: that needed a
+      // quarter-turn (once lost, standing the bore on end as a rod through the
+      // tube), and its outside is the face that points away from the eye
+      // looking down the tube.
+      P('bore', at(mesh(latheGeo('pz_bore', [
+        [0.0425, -0.138], [0.0438, -0.138], [0.0438, 0.15], [0.0425, 0.15], [0.0425, -0.138],
+      ], 20), WM.bore), 0, 0.040, -0.700));
       P('shield', at((() => {
         const s = new THREE.Group();
         // A vision port you can actually see through, on the CENTRELINE, on the
@@ -1930,24 +2002,27 @@ export function buildViewmodel(id, pap) {
         s.add(mesh(bevelBoxGeo(0.014, 0.052, 0.014, 0.002), STD, -0.004, -0.050, 0));
         return s;
       })(), 0, 0.100, -0.300));
+      // Loaded, the rocket sits wholly inside the tube, tail fins just short of
+      // the open back end. It used to hang 19cm out of the back of a tube it was
+      // wider than, and the inside-out tube let the warhead show through the wall.
       P('rocket', at((() => {
         const r = new THREE.Group();
         r.add(mesh(latheGeo('pz_rocket', [
-          [0.0, 0.15], [0.030, 0.14], [0.034, 0.10], [0.034, -0.02], [0.044, -0.05],
-          [0.044, -0.10], [0.030, -0.14], [0.0, -0.16],
+          [0.0, 0.15], [0.028, 0.14], [0.032, 0.10], [0.032, -0.02], [0.041, -0.05],
+          [0.041, -0.10], [0.028, -0.14], [0.0, -0.16],
         ], 20), WM.phosphate));
         r.add(mesh(latheGeo('pz_warhead', [
-          [0.001, -0.20], [0.020, -0.175], [0.038, -0.14], [0.044, -0.11], [0.030, -0.10],
+          [0.001, -0.20], [0.019, -0.175], [0.035, -0.14], [0.041, -0.11], [0.028, -0.10],
         ], 20), WM.copper));
         for (let i = 0; i < 4; i++) {
           const a = (i / 4) * Math.PI * 2;
           // Radial, not tangential: the 30mm dimension is the fin's DEPTH out
           // from the body, so it has to be the one the rotation sweeps round.
           r.add(mesh(bevelBoxGeo(0.030, 0.004, 0.050, 0.001), STD,
-            Math.cos(a) * 0.034, Math.sin(a) * 0.034, 0.120, 0, 0, a));
+            Math.cos(a) * 0.027, Math.sin(a) * 0.027, 0.120, 0, 0, a));
         }
         return r;
-      })(), 0, 0.040, 0.320));
+      })(), 0, 0.040, 0.110));
       P('sight_f', at(new THREE.Group(), 0, A, -0.30));
       P('sight_r', at(new THREE.Group(), 0, A, 0.05));
       P('hand_r', hand(0.014, -0.052, 0.062, -0.18));
@@ -1992,12 +2067,15 @@ export function buildViewmodel(id, pap) {
       }
       {   // power dial with a needle and a hot green face
         const dial = new THREE.Group();
+        // A cup, with the green face sunk inside its rim. As a solid disc it
+        // covered the face completely; the face only ever showed because the
+        // disc used to be drawn inside-out.
         dial.add(mesh(latheGeo('ray_dial', [
-          [0.0, 0.010], [0.038, 0.010], [0.042, 0.004], [0.042, -0.008], [0.0, -0.008],
+          [0.0, 0.003], [0.033, 0.003], [0.035, 0.010], [0.040, 0.010], [0.042, 0.004], [0.042, -0.008], [0.0, -0.008],
         ], 20), BR, 0, 0, 0, 0, Math.PI / 2, 0));
         dial.add(mesh(cylGeo(0.033, 0.033, 0.012, 20), pap ? WM.papCore : WM.rayGlass, 0, 0, 0, 0, 0, Math.PI / 2));
-        dial.add(mesh(torusGeo(0.036, 0.004, 5, 20), BR, 0, 0, 0, 0, Math.PI / 2, 0));
-        dial.add(mesh(bevelBoxGeo(0.004, 0.026, 0.004, 0.0008), WM.ironDark, 0.012, 0.008, 0, 0, 0, -0.5));
+        dial.add(mesh(torusGeo(0.036, 0.004, 5, 20), BR, 0.008, 0, 0, 0, Math.PI / 2, 0));
+        dial.add(mesh(bevelBoxGeo(0.004, 0.026, 0.004, 0.0008), WM.ironDark, 0.008, 0.008, 0, 0, 0, -0.5));
         parts.dial = at(dial, 0.062, 0.030, -0.050);
         g.add(parts.dial);
       }

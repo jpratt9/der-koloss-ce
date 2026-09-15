@@ -15,25 +15,12 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { THREE, loadGameModule, repoRoot } from './lib/headless-three.mjs';
 import { seedRandom } from './lib/headless-map.mjs';
-
-const { GLTFLoader } = await import(pathToFileURL(join(repoRoot, 'vendor/loaders/GLTFLoader.js')).href);
-
-async function loadZombieModel(file) {
-  const json = JSON.parse(await readFile(join(repoRoot, 'assets/models/zombies', file), 'utf8'));
-  // Skin and skeleton only: the colour atlas cannot move a hit, and decoding it
-  // needs a browser.
-  delete json.images; delete json.textures; delete json.samplers;
-  for (const m of json.materials || []) delete m.pbrMetallicRoughness?.baseColorTexture;
-  return new Promise((resolve, reject) => new GLTFLoader().parse(JSON.stringify(json), '', resolve, reject));
-}
+import { loadZombieModels } from './lib/headless-zombies.mjs';
 
 seedRandom(0x2b7e1516);
-const { assets } = await loadGameModule('assets.js');
-assets.models.zombie1 = await loadZombieModel('Zombie_Basic.gltf');
-assets.models.zombie2 = await loadZombieModel('Zombie_Chubby.gltf');
+await loadZombieModels();
 const { ZombieVisual, ZombieManager, ZSTATES, createZombieModel, rayHitZombieBody, zombieAimPoint } = await loadGameModule('zombies.js');
 const { attachZombieDetail } = await loadGameModule('render', 'ZombieDetail.js');
 const { Game } = await loadGameModule('game.js');
