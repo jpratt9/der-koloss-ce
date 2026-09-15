@@ -2,7 +2,7 @@
 // weapon tracked by slot through the machine, and the hand-over back to the rig.
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { readGameSource } from './lib/game-source.mjs';
+import { readGameSource, readWeaponsSource } from './lib/game-source.mjs';
 
 import {
   papEventMatches,
@@ -14,7 +14,7 @@ import {
 const root = new URL('../', import.meta.url);
 const [gameSource, weaponSource, mapSource] = await Promise.all([
   readGameSource(),
-  readFile(new URL('js/weapons.js', root), 'utf8'),
+  readWeaponsSource(),
   readFile(new URL('js/map.js', root), 'utf8'),
 ]);
 

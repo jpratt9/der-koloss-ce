@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { readFile, readdir } from 'node:fs/promises';
 import { relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readGameSource } from './lib/game-source.mjs';
+import { readGameSource, readWeaponsSource } from './lib/game-source.mjs';
 
 import { nextDogRound } from '../js/config.js';
 import {
@@ -37,7 +37,7 @@ const [zombies, assets, audioSource, inputSource, playerSource, gameSource, weap
   readFile(new URL('js/input.js', root), 'utf8'),
   readFile(new URL('js/player.js', root), 'utf8'),
   readGameSource(),
-  readFile(new URL('js/weapons.js', root), 'utf8'),
+  readWeaponsSource(),
   readFile(new URL('js/map.js', root), 'utf8'),
   readFile(new URL('js/main.js', root), 'utf8'),
   readFile(new URL('js/net.js', root), 'utf8'),
@@ -408,7 +408,10 @@ assert.match(netSource, /this\._mediaConnections\.get\(mc\.peer\) !== mc/);
 assert.match(netSource, /generation !== this\._voiceRequestGeneration \|\| !this\._isAllowedVoicePeer/);
 
 // Collateral and wonder-weapon claims must remain host/client symmetric.
-const coltDefinition = /m1911:\s*\{([\s\S]*?)\n  \},\n  magnum:/.exec(weaponSource)?.[1] || '';
+// Searched from the catalog: other weapon tables (the PaP camos) also have an
+// `m1911: {` entry, and one of them can come first in the joined source.
+const catalogSource = weaponSource.slice(weaponSource.indexOf('export const WEAPONS = {'));
+const coltDefinition = /m1911:\s*\{([\s\S]*?)\n  \},\n  magnum:/.exec(catalogSource)?.[1] || '';
 // Assert the three properties independently rather than as one adjacent
 // string. Requiring them to sit next to each other on the same line made this
 // fail the moment an unrelated field (a shell-casing descriptor) was inserted

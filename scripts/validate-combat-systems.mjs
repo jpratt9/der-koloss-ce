@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { readGameSource } from './lib/game-source.mjs';
+import { readGameSource, readWeaponsSource } from './lib/game-source.mjs';
 import {
   chainArcTargetAllowed,
   dogHitZones,
@@ -108,7 +108,7 @@ assert.equal(shouldSpawnDogRoundReward({ dogRound: true, victimDog: true, remain
   'only the final confirmed hound death triggers the reward');
 
 const game = readGameSource();
-const weapons = fs.readFileSync(new URL('../js/weapons.js', import.meta.url), 'utf8');
+const weapons = readWeaponsSource();
 const player = fs.readFileSync(new URL('../js/player.js', import.meta.url), 'utf8');
 assert.equal((game.match(/hitscanDamage\(/g) || []).length, 2,
   'local and host-validated guest hits must share the damage rule');
@@ -132,7 +132,8 @@ assert.match(game, /floorArcTargetAllowed\([\s\S]{0,180}_arcHasLineOfSight/);
 assert.match(game, /chainArcTargetAllowed\([\s\S]{0,220}_arcHasLineOfSight/);
 
 const weaponBlock = (id, nextId) => {
-  const start = weapons.indexOf(`  ${id}: {`);
+  // From the catalog on: the PaP camo table has `  kar98: {` lines too.
+  const start = weapons.indexOf(`  ${id}: {`, weapons.indexOf('export const WEAPONS = {'));
   const end = nextId ? weapons.indexOf(`  ${nextId}: {`, start + 1) : weapons.indexOf('\n};', start);
   assert.ok(start >= 0 && end > start, `missing weapon block ${id}`);
   return weapons.slice(start, end);

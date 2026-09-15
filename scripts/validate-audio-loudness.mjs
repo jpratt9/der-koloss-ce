@@ -32,6 +32,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readWeaponsSource } from './lib/game-source.mjs';
 
 const run = promisify(execFile);
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -147,7 +148,7 @@ assert.ok(median('pvoice') === median('zvoice'),
 // case. Ejection is now an explicit per-weapon field, and this is what stops it
 // drifting the next time a weapon is added: a definition with no `casing` falls
 // back to silence at runtime and fails here.
-const weaponsSrc = await readFile(join(root, 'js', 'weapons.js'), 'utf8');
+const weaponsSrc = readWeaponsSource();
 const casingsSrc = await readFile(join(root, 'js', 'audio', 'casings.js'), 'utf8');
 
 const declaredKinds = new Set(

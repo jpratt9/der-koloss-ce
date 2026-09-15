@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile, stat } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { readGameSource } from './lib/game-source.mjs';
+import { readGameSource, readWeaponsSource } from './lib/game-source.mjs';
 import { PERK_DRINK_TIMELINE, PERK_IDS, perkDrinkPhase } from '../js/gameplay-rules.js';
 
 assert.deepEqual(PERK_IDS, ['jug', 'speed', 'dtap', 'qr']);
@@ -22,7 +22,7 @@ assert.equal(perkDrinkPhase(9), 'done');
 
 const [game, weapons, player, audio, net, assets, assetsPage] = await Promise.all([
   readGameSource(),
-  readFile(new URL('../js/weapons.js', import.meta.url), 'utf8'),
+  readWeaponsSource(),
   readFile(new URL('../js/player.js', import.meta.url), 'utf8'),
   readFile(new URL('../js/audio.js', import.meta.url), 'utf8'),
   readFile(new URL('../js/net.js', import.meta.url), 'utf8'),

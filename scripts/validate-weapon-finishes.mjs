@@ -30,8 +30,8 @@
 // every finish and asserts that no unlit material came out carrying a property
 // only a lit material can render.
 import assert from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { THREE, loadGameModule } from './lib/headless-three.mjs';
+import { readWeaponsSource } from './lib/game-source.mjs';
 
 const { WEAPONS, WeaponRig, buildViewmodel, buildPapDisplayWeapon, buildDisplayWeapon } =
   await loadGameModule('weapons.js');
@@ -142,9 +142,12 @@ for (const bogus of ['acr_v1_removed', '', 'nope']) {
 // The behavioural sweep above only sees materials that exist today. A new camo
 // added with a bare `if (o.isMesh && o.material)` traverse would reintroduce
 // the whole class, so pin the call sites too.
-const src = readFileSync(new URL('../js/weapons.js', import.meta.url), 'utf8');
+const src = readWeaponsSource();
 for (const fn of ['applyPapLivingFinish', 'applyGoldCamo', 'applyDiamondCamo']) {
-  const body = src.slice(src.indexOf(fn + '('), src.indexOf(fn + '(') + 1400);
+  // From the definition, not the first mention: in the joined source of the
+  // weapons modules, a call can come before the file that defines the name.
+  const at = src.search(new RegExp(`^\\s*(?:export )?(?:function )?${fn}\\(.*\\) \\{$`, 'm'));
+  const body = src.slice(at, at + 1400);
   if (!/wearsWeaponFinish\(/.test(body)) {
     failures.push(`${fn} no longer routes its traverse through wearsWeaponFinish()`);
   }
