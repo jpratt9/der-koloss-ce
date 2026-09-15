@@ -12,9 +12,10 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { THREE, loadGameModule } from './lib/headless-three.mjs';
+import { readGameSource } from './lib/game-source.mjs';
 
 const { buildMap } = await loadGameModule('map.js');
-const game = readFileSync(new URL('../js/game.js', import.meta.url), 'utf8');
+const game = readGameSource();
 const hellhoundFx = readFileSync(new URL('../js/render/HellhoundFX.js', import.meta.url), 'utf8');
 
 // ---------------------------------------------------------------------------

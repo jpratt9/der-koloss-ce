@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { readGameSource } from './lib/game-source.mjs';
 import {
   createConcurrencyGate,
   MIN_BOX_WEAPON_RESULTS_BEFORE_TEDDY,
@@ -23,7 +24,7 @@ dogVoices.release(); dogVoices.release(); dogVoices.release();
 assert.equal(dogVoices.active, 0, 'extra releases cannot underflow the gate');
 
 assert.equal(ROUND_INTERMISSION_SECONDS, 8);
-const game = fs.readFileSync(new URL('../js/game.js', import.meta.url), 'utf8');
+const game = readGameSource();
 assert.match(game, /phase = 'intermission';[\s\S]{0,400}if \(this\.player\.dead\) this\.respawnSelf\(\);[\s\S]{0,200}t: 'intermission'/,
   'authority must respawn at intermission and announce it');
 assert.doesNotMatch(game, /beginRound\(n\)[\s\S]{0,700}if \(this\.player\.dead\) this\.respawnSelf\(\)/,

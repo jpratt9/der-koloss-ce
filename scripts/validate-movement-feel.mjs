@@ -7,13 +7,14 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { readGameSource } from './lib/game-source.mjs';
 import { resolveCircleBox, moveCircleWithColliders } from '../js/collision.js';
 import { stairFlightColliders, platformSideBlocksAtFeet } from '../js/map-layout.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (file) => readFile(path.join(root, file), 'utf8');
 const [player, game, rig, input, indexHtml, postfx] = await Promise.all([
-  read('js/player.js'), read('js/game.js'), read('js/render/CameraRig.js'),
+  read('js/player.js'), readGameSource(), read('js/render/CameraRig.js'),
   read('js/input.js'), read('index.html'), read('js/render/PostFX.js'),
 ]);
 

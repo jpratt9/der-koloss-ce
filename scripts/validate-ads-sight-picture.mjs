@@ -30,19 +30,18 @@
 // WeaponRig, film it through the real viewmodel lens, and look down the barrel
 // of the actual projection the player gets.
 import assert from 'node:assert';
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { THREE, loadGameModule, repoRoot } from './lib/headless-three.mjs';
+import { THREE, loadGameModule } from './lib/headless-three.mjs';
+import { readGameSource } from './lib/game-source.mjs';
 
 const { WEAPONS, buildViewmodel, WeaponRig } = await loadGameModule('weapons.js');
 
 // ---------------------------------------------------------------------------
-// The lens, read out of game.js so the two cannot drift apart
+// The lens, read out of the game's source so the two cannot drift apart
 // ---------------------------------------------------------------------------
-const gameSrc = await readFile(join(repoRoot, 'js', 'game.js'), 'utf8');
+const gameSrc = readGameSource();
 const num = (re, what) => {
   const m = gameSrc.match(re);
-  assert.ok(m, `validate-ads-sight-picture: could not read ${what} out of js/game.js`);
+  assert.ok(m, `validate-ads-sight-picture: could not read ${what} out of the game's source`);
   return Number(m[1]);
 };
 const VIEWMODEL_FOV = num(/const VIEWMODEL_FOV = ([\d.]+)/, 'VIEWMODEL_FOV');

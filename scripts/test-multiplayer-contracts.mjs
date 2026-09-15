@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { readGameSource } from './lib/game-source.mjs';
 import { CFG } from '../js/config.js';
 import {
   availableLobbyColor,
@@ -233,7 +234,7 @@ assert.equal(departedLobbyPlayers(nextLobby, nextLobby, 'host').length, 0);
 const [netSource, mainSource, gameSource, playerSource, hudSource, indexHtml, styleSource] = await Promise.all([
   readFile(new URL('../js/net.js', import.meta.url), 'utf8'),
   readFile(new URL('../js/main.js', import.meta.url), 'utf8'),
-  readFile(new URL('../js/game.js', import.meta.url), 'utf8'),
+  readGameSource(),
   readFile(new URL('../js/player.js', import.meta.url), 'utf8'),
   readFile(new URL('../js/hud.js', import.meta.url), 'utf8'),
   readFile(new URL('../index.html', import.meta.url), 'utf8'),

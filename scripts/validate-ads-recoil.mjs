@@ -30,11 +30,12 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { loadGameModule } from './lib/headless-three.mjs';
+import { readGameSource } from './lib/game-source.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (file) => readFile(path.join(root, file), 'utf8');
 const [weaponsSrc, gameSrc, rigSrc] = await Promise.all([
-  read('js/weapons.js'), read('js/game.js'), read('js/render/CameraRig.js'),
+  read('js/weapons.js'), readGameSource(), read('js/render/CameraRig.js'),
 ]);
 const { WEAPONS, getStats } = await loadGameModule('weapons.js');
 

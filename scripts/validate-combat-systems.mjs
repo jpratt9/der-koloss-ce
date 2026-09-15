@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { readGameSource } from './lib/game-source.mjs';
 import {
   chainArcTargetAllowed,
   dogHitZones,
@@ -106,7 +107,7 @@ assert.equal(shouldSpawnDogRoundReward({ dogRound: false, victimDog: true, remai
 assert.equal(shouldSpawnDogRoundReward({ dogRound: true, victimDog: true, remaining: 1, alreadySpawned: false }), false,
   'only the final confirmed hound death triggers the reward');
 
-const game = fs.readFileSync(new URL('../js/game.js', import.meta.url), 'utf8');
+const game = readGameSource();
 const weapons = fs.readFileSync(new URL('../js/weapons.js', import.meta.url), 'utf8');
 const player = fs.readFileSync(new URL('../js/player.js', import.meta.url), 'utf8');
 assert.equal((game.match(/hitscanDamage\(/g) || []).length, 2,
