@@ -415,8 +415,8 @@ export class WeaponRig {
       if (this.current.parts.barrels && WEAPONS[this.current.id].breakAction) {
         this.current.parts.barrels.rotation.x = 0;
       }
-      // Nothing is driving the gloves this frame, so put them back on the gun.
-      if (this.boltT <= 0) this._restHands();
+      // Nothing is driving the gloves or the action this frame, so put them back.
+      if (this.boltT <= 0) { this._restHands(); this._restAction(); }
     }
     // cymbal monkey wind-up: raise, key spins, arms clash, then it's thrown
     if (this.monkeyT > 0) {

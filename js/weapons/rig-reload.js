@@ -1,4 +1,5 @@
-// WeaponRig's reload and bolt-cycle animation, and the glove posing both use.
+// WeaponRig's reload and bolt-cycle animation, and the glove and action posing
+// both use.
 // Methods of WeaponRig: js/weapons/rig.js copies them onto WeaponRig.prototype.
 import { clamp, lerp } from '../utils.js';
 import { setHandPose, resetHandPose } from '../render/WeaponHands.js';
@@ -24,6 +25,35 @@ export class WeaponRigReload {
       if (w.userData.hand) resetHandPose(w.userData.hand);
     }
     this._handsPosed = false;
+  }
+
+  /**
+   * Run a part of the action (bolt, bolt knob, slide, pump) `dz` back along the
+   * bore from where it was authored.
+   *
+   * The travel is kept on the part as well as applied, because tuckStock() also
+   * sets position.z, every frame, on anything that sits wholly behind the sight.
+   * It adds the travel back on top of the tuck, and this adds the tuck under the
+   * travel, so the two compose in whichever order they run.
+   */
+  _actionZ(node, dz) {
+    if (dz) this._actionPosed = true;
+    node.userData.actionZ = dz;
+    node.position.z = (node.userData.z0 ?? (node.userData.z0 = node.position.z)) + (node.userData.tuckZ ?? 0) + dz;
+  }
+
+  /**
+   * Put every part the action moved back where it was authored. A reload cut
+   * short (a perk drink sets reloadT to 0) would otherwise leave a bolt or a
+   * slide wherever it had got to.
+   */
+  _restAction() {
+    const cur = this.current;
+    if (!cur || !this._actionPosed) return;
+    this._actionPosed = false;
+    for (const node of Object.values(cur.parts)) {
+      if (node.userData.actionZ) this._actionZ(node, 0);
+    }
   }
 
   /**
@@ -156,13 +186,12 @@ export class WeaponRigReload {
     }
     // charging / bolt / slide action near the end
     if (cur.cls === 'pistol' && p.slide) {
-      p.slide.position.z = p.slide.userData.z0 ?? (p.slide.userData.z0 = p.slide.position.z);
-      p.slide.position.z += t > 0.62 && t < 0.85 ? Math.sin((t - 0.62) / 0.23 * Math.PI) * 0.05 : 0;
+      this._actionZ(p.slide, t > 0.62 && t < 0.85 ? Math.sin((t - 0.62) / 0.23 * Math.PI) * 0.05 : 0);
     }
     if ((cur.id === 'kar98') && p.bolt) {
       const c = phase(0.55, 0.95);
-      p.bolt.position.z = (p.bolt.userData.z0 ?? (p.bolt.userData.z0 = p.bolt.position.z)) + Math.sin(c * Math.PI) * 0.07;
-      p.bolt_knob.position.z = (p.bolt_knob.userData.z0 ?? (p.bolt_knob.userData.z0 = p.bolt_knob.position.z)) + Math.sin(c * Math.PI) * 0.07;
+      this._actionZ(p.bolt, Math.sin(c * Math.PI) * 0.07);
+      this._actionZ(p.bolt_knob, Math.sin(c * Math.PI) * 0.07);
     }
     if (p.cover && (cur.id === 'mg42' || cur.id === 'browning')) {
       p.cover.rotation.x = t > 0.1 && t < 0.6 ? -0.5 * Math.sin(phase(0.1, 0.6) * Math.PI) : 0;
@@ -202,20 +231,20 @@ export class WeaponRigReload {
     const p = cur.parts;
     const arc = Math.sin(t * Math.PI);
     if (cur.id === 'kar98' && p.bolt) {
-      p.bolt.position.z = (p.bolt.userData.z0 ?? (p.bolt.userData.z0 = p.bolt.position.z)) + arc * 0.07;
-      p.bolt_knob.position.z = (p.bolt_knob.userData.z0 ?? (p.bolt_knob.userData.z0 = p.bolt_knob.position.z)) + arc * 0.07;
+      this._actionZ(p.bolt, arc * 0.07);
+      this._actionZ(p.bolt_knob, arc * 0.07);
       p.bolt_knob.rotation.y = arc * 0.7;
     }
     if ((cur.id === 'mosin' || cur.id === 'springfield') && p.bolt_h) {
       // handle rotates up, bolt draws back, then seats home again
       const pull = Math.sin(t * Math.PI);
-      p.bolt_h.position.z = (p.bolt_h.userData.z0 ?? (p.bolt_h.userData.z0 = p.bolt_h.position.z)) + pull * 0.075;
+      this._actionZ(p.bolt_h, pull * 0.075);
       p.bolt_h.rotation.z = (cur.id === 'mosin' ? -0.9 : -0.4) - pull * 0.55;
-      p.bolt_knob.position.z = (p.bolt_knob.userData.z0 ?? (p.bolt_knob.userData.z0 = p.bolt_knob.position.z)) + pull * 0.075;
+      this._actionZ(p.bolt_knob, pull * 0.075);
       p.bolt_knob.position.y = (p.bolt_knob.userData.y0 ?? (p.bolt_knob.userData.y0 = p.bolt_knob.position.y)) + pull * 0.02;
     }
     if (cur.id === 'trench' && p.pump) {
-      p.pump.position.z = (p.pump.userData.z0 ?? (p.pump.userData.z0 = p.pump.position.z)) + arc * 0.09;
+      this._actionZ(p.pump, arc * 0.09);
       // the hand goes WITH the forend — it is the thing racking it
       if (p.hand_l) {
         const r = this._rest(p.hand_l);

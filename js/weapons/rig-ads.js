@@ -103,7 +103,16 @@ export class WeaponRigAds {
     const ramp = Math.max(0, Math.min(1, (t - 0.34) / 0.66));
     const clear = (ADS_BUTT_CLEAR - this.viewOffsetZ) / this.viewScale;
     for (const { node, baseZ, frontZ } of tuck) {
-      node.position.z = baseZ + ramp * Math.max(0, clear - frontZ - depth);
+      // A tucked part can be part of the action too: the Kar98k's bolt and the
+      // Mosin's bolt knob sit wholly behind the sight and still cycle after
+      // every shot. Writing the tuck alone reset them every frame, so the bolt
+      // never moved while the hand worked it. The action's travel rides on top
+      // (see _actionZ()), and the tuck is what knows where the part was
+      // authored: by the first shot, an aimed weapon has already tucked it.
+      const tuckZ = ramp * Math.max(0, clear - frontZ - depth);
+      node.userData.z0 ??= baseZ;
+      node.userData.tuckZ = tuckZ;
+      node.position.z = baseZ + tuckZ + (node.userData.actionZ ?? 0);
     }
   }
 }
