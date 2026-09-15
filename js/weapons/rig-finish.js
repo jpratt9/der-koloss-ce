@@ -1,6 +1,6 @@
 // WeaponRig's finishes on the weapon in hand: gold, diamond and the Pack-a-Punch
 // living camo, and the gold knife.
-// Methods of WeaponRig: js/weapons.js copies them onto WeaponRig.prototype.
+// Methods of WeaponRig: js/weapons/rig.js copies them onto WeaponRig.prototype.
 import * as THREE from 'three';
 import {
   takesPbrFinish, wearsWeaponFinish, applyPapLivingFinish, advancePapLivingFinish, metalEnvTex,

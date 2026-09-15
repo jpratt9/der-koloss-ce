@@ -1,6 +1,6 @@
 // WeaponRig's ADS solve: where an aimed weapon is held, and the stock that
 // slides back past the lens as it comes up.
-// Methods of WeaponRig: js/weapons.js copies them onto WeaponRig.prototype.
+// Methods of WeaponRig: js/weapons/rig.js copies them onto WeaponRig.prototype.
 
 // ---- ADS depth ------------------------------------------------------------
 // The authored ADS depth: how far out in front of the lens a weapon is held

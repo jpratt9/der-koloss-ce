@@ -1,5 +1,5 @@
 // WeaponRig's reload and bolt-cycle animation, and the glove posing both use.
-// Methods of WeaponRig: js/weapons.js copies them onto WeaponRig.prototype.
+// Methods of WeaponRig: js/weapons/rig.js copies them onto WeaponRig.prototype.
 import { clamp, lerp } from '../utils.js';
 import { setHandPose, resetHandPose } from '../render/WeaponHands.js';
 import { WEAPONS } from './catalog.js';
