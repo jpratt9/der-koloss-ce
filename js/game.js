@@ -15,7 +15,7 @@ import {
   buildPapDisplayWeapon, updatePapDisplayWeapon, disposePapDisplayWeapon,
 } from './weapons.js';
 import { WeaponRig } from './weapons.js';
-import { ZombieManager, ZSTATES, ZombieVisual, createZombieModel } from './zombies.js';
+import { ZombieManager, ZSTATES, ZombieVisual, createZombieModel, rayHitZombieBody, zombieAimPoint } from './zombies.js';
 import { attachZombieDetail } from './render/ZombieDetail.js';
 import { LocalPlayer, RemotePlayer } from './player.js';
 import { FX } from './fx.js';
@@ -81,6 +81,9 @@ const BOX_DISPLAY_PITCH = 0.10;
 const BOX_DISPLAY_ROLL = 0.06;
 // Scratch for the remote muzzle lookup, so a firefight allocates nothing.
 const _shotMuzzle = new THREE.Vector3();
+// Scratch for the posed-body ray test and the host's claim target, likewise.
+const _bodyHit = { dist: 0, head: false };
+const _claimTarget = new THREE.Vector3();
 import {
   acceptPendingCredit,
   boundedPelletDirectionAllowed,
@@ -115,9 +118,11 @@ import {
 const INTERACT_HOLD = { power: 0.8, tele: 0.8, pap: 0.5, revive: 3, barrier: 0 };
 // Frozen zero-shake, shared so the down/dead camera path allocates nothing.
 const NO_SHAKE = Object.freeze({ yaw: 0, pitch: 0, roll: 0 });
-// Hit spheres above a zombie's feet, head first. Shared: zombieHitTest runs
-// per pellet against every live zombie, and it used to rebuild these as fresh
-// objects for each one — a shotgun blast into a full horde was ~800 of them.
+// Hit spheres above a zombie's feet, head first — only for a zombie with no
+// model to test against; anything drawn is hit through its posed bones (see
+// rayHitZombieBody). Shared: zombieHitTest runs per pellet against every live
+// zombie, and it used to rebuild these as fresh objects for each one — a
+// shotgun blast into a full horde was ~800 of them.
 const ZOMBIE_HIT_SPHERES = Object.freeze([
   Object.freeze({ dy: 1.5, r: 0.23, head: true }),
   Object.freeze({ dy: 1.05, r: 0.36, head: false }),
@@ -960,8 +965,14 @@ export class Game {
 
   _remoteShotTargetAllowed(claim, zombie, head, claimedRay = null) {
     if (!claim || !zombie) return false;
-    const targetY = zombie.y + (head ? (zombie.dog ? 1.02 : zombie.crawler ? 0.45 : 1.5) : (zombie.dog ? 0.72 : zombie.crawler ? 0.28 : 1.0));
-    const target = { x: zombie.x, y: targetY, z: zombie.z };
+    // Aim at the body this host has posed — the boxes the guest's own ray was
+    // tested against — or a guest's headshot on a crawler, whose skull lies a
+    // metre in front of its feet, is refused as a miss at close range.
+    const target = zombieAimPoint(zombie, !!head, _claimTarget) || {
+      x: zombie.x,
+      y: zombie.y + (head ? (zombie.dog ? 1.02 : zombie.crawler ? 0.45 : 1.5) : (zombie.dog ? 0.72 : zombie.crawler ? 0.28 : 1.0)),
+      z: zombie.z,
+    };
     if (claim.s.fire === 'arc') {
       if (claim.accepted.includes(zombie)) return false;
       if (claim.accepted.length) {
@@ -1008,7 +1019,7 @@ export class Game {
       const wall = this.wallDist(claim.origin, validationDir, hit.distance + 0.5);
       return wall >= hit.distance - 0.25;
     }
-    const vx = zombie.x - claim.origin.x, vy = targetY - claim.origin.y, vz = zombie.z - claim.origin.z;
+    const vx = target.x - claim.origin.x, vy = target.y - claim.origin.y, vz = target.z - claim.origin.z;
     const distance = Math.hypot(vx, vy, vz);
     const wall = distance
       ? this.wallDist(claim.origin, new THREE.Vector3(vx, vy, vz).normalize(), distance + 1.2)
@@ -1876,6 +1887,11 @@ export class Game {
         if (hit) hits.push({ z, dist: hit.centerDistance, head: hit.head });
         continue;
       }
+      const posed = rayHitZombieBody(z, origin, dir, maxDist, _bodyHit);
+      if (posed !== null) {
+        if (posed) hits.push({ z, dist: _bodyHit.dist, head: _bodyHit.head });
+        continue;
+      }
       const spheres = z.crawler ? CRAWLER_HIT_SPHERES : ZOMBIE_HIT_SPHERES;
       for (let k = 0; k < spheres.length; k++) {
         const sp = spheres[k];
@@ -1906,9 +1922,11 @@ export class Game {
       const { z, dist, head } = hits[i];
       const dmg = hitscanDamage(s, dist, i);
       anyHit = true;
-      const hx = z.x;
-      const hy = z.y + (z.dog ? (head ? 1.02 : 0.72) : (head ? 1.5 : 1.0));
-      const hz = z.z;
+      // Bleed where the round went in, not at a fixed height over the feet —
+      // that put a crawler's headshot spray a metre and a half in the air.
+      const hx = origin.x + dir.x * dist;
+      const hy = origin.y + dir.y * dist;
+      const hz = origin.z + dir.z * dist;
       this.hitFX(z, hx, hy, hz, head);
       this.applyZombieDamage(z, dmg, head, w, s, false, dir);
     }
