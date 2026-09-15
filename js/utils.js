@@ -9,6 +9,20 @@ export const damp = (a, b, l, dt) => lerp(a, b, 1 - Math.exp(-l * dt));
 
 export function dist2D(ax, az, bx, bz) { const dx = ax - bx, dz = az - bz; return Math.hypot(dx, dz); }
 
+// Copy the methods of each class in `parts` onto Target.prototype. This is how a
+// class too big for one file (Game, WeaponRig) keeps its methods in several and
+// is still one class with one `this`. A name defined twice is a split mistake,
+// so it fails at load.
+export function installMixins(Target, parts) {
+  for (const part of parts) {
+    for (const key of Object.getOwnPropertyNames(part.prototype)) {
+      if (key === 'constructor') continue;
+      if (Object.getOwnPropertyDescriptor(Target.prototype, key)) throw new Error(`${Target.name}.${key} is defined twice`);
+      Object.defineProperty(Target.prototype, key, Object.getOwnPropertyDescriptor(part.prototype, key));
+    }
+  }
+}
+
 // ---------- AABB (2D, x/z) collision helpers ----------
 // The resolver itself lives in js/collision.js, which is deliberately free of
 // Three.js so CI can import it and test real movement behaviour. Re-exported

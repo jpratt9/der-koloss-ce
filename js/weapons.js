@@ -1,20 +1,19 @@
 // Weapon definitions (real WWII-era firearms + sci-fi wonder weapons),
 // Pack-a-Punch variants, detailed procedural view-models with reload animations.
 import * as THREE from 'three';
-import { clamp, damp, lerp } from './utils.js';
+import { clamp, damp, lerp, installMixins } from './utils.js';
 import { PERK_DRINK_TIMELINE } from './gameplay-rules.js';
 import { WM } from './render/WeaponMaterials.js';
 import { bx, cyl } from './render/WeaponParts.js';
-import { crackFist, knifeHand, setHandPose, resetHandPose } from './render/WeaponHands.js';
+import { crackFist, knifeHand } from './render/WeaponHands.js';
 import { WEAPONS } from './weapons/catalog.js';
 import { buildMonkey } from './weapons/monkey.js';
 import { buildPerkBottle, posePerkBottle } from './weapons/perk-bottle.js';
 import { buildViewmodel } from './weapons/viewmodel.js';
-import {
-  takesPbrFinish, wearsWeaponFinish, applyPapLivingFinish, advancePapLivingFinish, metalEnvTex,
-  sparkleTex,
-} from './weapons/finishes.js';
 import { KNUCKLE_DUR, poseKnuckleCrack } from './weapons/knuckle-crack.js';
+import { WeaponRigAds } from './weapons/rig-ads.js';
+import { WeaponRigFinish } from './weapons/rig-finish.js';
+import { WeaponRigReload } from './weapons/rig-reload.js';
 
 export { WEAPONS, getStats, BOX_POOL, CASING_BY_SFX } from './weapons/catalog.js';
 export { buildMonkey } from './weapons/monkey.js';
@@ -58,36 +57,6 @@ function flashTexture() {
   _flashTex.colorSpace = THREE.SRGBColorSpace;
   return _flashTex;
 }
-
-// ---- ADS depth ------------------------------------------------------------
-// The authored ADS depth: how far out in front of the lens a weapon is held
-// when it is HELD rather than shouldered. Right for a pistol at arm's length,
-// where the frame really does end two hands away from your face.
-const ADS_HELD_Z = -0.26;
-// A cheek weld. Shouldering a weapon puts the thing you look through about this
-// far from your eye — and puts the butt PAST your cheek, behind the lens, where
-// the near plane hides it. Holding a rifle out at arm's length instead is what
-// left the buttpad of every shouldered weapon in the middle of the screen with
-// the stock filling the bottom third of the frame.
-const ADS_EYE_RELIEF = 0.095;
-// A weapon that reaches further than this behind the thing you look through has
-// a stock on it, and goes to the shoulder. Measured rather than declared by
-// class: the Wunderwaffe is a `wonder` and the Panzerschreck a `launcher`, and
-// both are shouldered, while the Ray Gun of the same class is not.
-const ADS_STOCK_REACH = 0.10;
-// How close anything that CANNOT be tucked out of the way may come to the lens.
-// The eye a real cheek weld puts 95mm behind a rear sight is not a 58-degree
-// rectilinear camera: solved outright, the Gewehr 43's receiver lands 13mm off
-// the lens — a millimetre outside the near plane, sliced open — and the
-// Browning's carry handle covers a third of the screen. Each weapon closes as
-// far as its own back end allows and no further, which is why the Type 100 gets
-// most of a cheek weld while the AK-74u, with a receiver cover reaching almost
-// to its own dot, keeps its distance.
-const ADS_FACE_CLEAR = 0.05;
-// Clearance behind the lens for a stock that has gone to the shoulder. The near
-// plane does the hiding; this is just far enough past it to stay hidden through
-// the bob and the recoil settle. See WeaponRig.tuckStock().
-const ADS_BUTT_CLEAR = 0.02;
 
 // ---- recoil authority while aiming ----------------------------------------
 // Hip-fire can afford to throw the weapon around: nothing on it has to stay
@@ -248,140 +217,6 @@ export class WeaponRig {
 
   get isDrinkingPerk() { return this.perkDrinkT > 0; }
 
-  applyGoldCamo(on) {
-    // BO1 gold: deep polished metal, real env reflections, slow sheen sweep + occasional glint
-    if (on && this.current) {
-      const mats = [];
-      this.current.group.traverse((o) => {
-        if (wearsWeaponFinish(o)) {
-          o.material = o.material.clone();
-          o.material.color.set(0xd4af37);
-          o.material.metalness = 1.0;
-          o.material.roughness = 0.3;
-          o.material.envMap = metalEnvTex();
-          o.material.envMapIntensity = 1.7;
-          o.material.emissive = new THREE.Color(0x3a2a00);
-          o.material.emissiveIntensity = 0.08;
-          mats.push(o.material);
-        }
-      });
-      this.goldCamo = { mats, t: Math.random() * 9 };
-    } else this.goldCamo = null;
-  }
-
-  applyDiamondCamo() {
-    // BO6-style diamond: platinum-white metal, hard reflections, elegant twinkling facets
-    if (!this.current) return;
-    const mats = [];
-    this.current.group.traverse((o) => {
-      if (wearsWeaponFinish(o)) {
-        o.material = o.material.clone();
-        o.material.color.set(0xf4f6fa);
-        o.material.metalness = 1.0;
-        o.material.roughness = 0.06;
-        o.material.envMap = metalEnvTex();
-        o.material.envMapIntensity = 1.7;
-        o.material.emissive = new THREE.Color(0xffffff);
-        o.material.emissiveMap = sparkleTex();
-        o.material.emissiveIntensity = 0.2;
-        mats.push(o.material);
-      }
-    });
-    this.diamondCamo = { mats, t: 0 };
-    this.flash.material.color.set(0xd8ecff); // icy muzzle flash
-  }
-
-  /**
-   * Tell the rig which lens the viewmodel is filmed through.
-   *
-   * game.js re-parents the rig under a node that scales it and pushes it out so
-   * the narrow viewmodel FOV does not double the weapon's apparent size. The
-   * ADS pose has to solve for distances measured from the EYE, so it needs that
-   * transform: camera-space z of an authored z is `offsetZ + scale * z`.
-   */
-  setViewLens(scale, offsetZ) {
-    this.viewScale = scale || 1;
-    this.viewOffsetZ = offsetZ || 0;
-    if (this.current) this.current.adsZ = undefined;   // re-solve on the next frame
-  }
-
-  /**
-   * The ADS depth for the equipped weapon, in the authored frame.
-   *
-   * One hardcoded number used to serve all 31 weapons, and it held every one of
-   * them out at arm's length. Nobody aims a rifle at arm's length: you bring it
-   * to your shoulder, which puts the rear sight a hand's width from your eye and
-   * the butt BEHIND your cheek. Held out in front instead, the sight ended up
-   * half a metre away — too small to aim with — and the stock, which should have
-   * been behind the lens entirely, filled the bottom third of the frame.
-   *
-   * So solve for the cheek weld: put whatever you look THROUGH an eye-relief in
-   * front of the lens. Weapons with nothing behind their sights — the pistols,
-   * the Ray Gun, the knife — have no shoulder to come back to and keep the pose
-   * they were authored with.
-   *
-   * But BOUND how far that travels by what is left behind the sight, because the
-   * eye a real cheek weld puts 95mm behind a rear sight is not a 58-degree
-   * rectilinear camera. Solved outright, an AK-74u comes back far enough to put
-   * its receiver cover 2cm off the lens: the dot is lovely and the whole bottom
-   * half of the screen is a foreshortened chrome slab of the gun's own backside,
-   * which is no more aimable than the buttpad it replaced. The butt is not what
-   * has to move to fix that — see tuckStock() — so each weapon closes only as
-   * far as its own back end allows, and a weapon whose back end is clear (the
-   * Type 100, the MP40) gets the whole cheek weld.
-   */
-  adsDepth(entry) {
-    const { aimZ, rearZ, faceZ } = entry.group.userData;
-    // Camera-space z of an authored z is `viewOffsetZ + viewScale * z`; solve
-    // that for the depth landing a given authored z a given distance out.
-    const depthFor = (z, dist) => (-dist - this.viewOffsetZ) / this.viewScale - z;
-    const shouldered = aimZ != null && rearZ != null && rearZ - aimZ > ADS_STOCK_REACH;
-    const depth = shouldered ? depthFor(aimZ, ADS_EYE_RELIEF) : ADS_HELD_Z;
-    if (faceZ == null) return depth;
-    return Math.min(depth, depthFor(faceZ, ADS_FACE_CLEAR));
-  }
-
-  /**
-   * Send the buttstock to the shoulder as the weapon comes up.
-   *
-   * A shouldered stock is behind your cheek, so nothing of it should be on
-   * screen — but the rig has no head, and dragging the whole weapon back far
-   * enough to hide the butt puts the receiver on the lens instead, which reads
-   * as a foreshortened close-up of the gun's own backside and is no easier to
-   * aim than the buttpad was. Moving only the stock costs nothing in the sight
-   * picture and is what the eye expects to see anyway.
-   *
-   * It slides straight down the view axis, away from the eye, so on screen it
-   * only recedes — and it does not start until the weapon is a third of the way
-   * up, which keeps the hip pose exactly as authored.
-   */
-  tuckStock(g, depth, t) {
-    const tuck = g.userData.adsTuck;
-    if (!tuck?.length) return;
-    const ramp = Math.max(0, Math.min(1, (t - 0.34) / 0.66));
-    const clear = (ADS_BUTT_CLEAR - this.viewOffsetZ) / this.viewScale;
-    for (const { node, baseZ, frontZ } of tuck) {
-      node.position.z = baseZ + ramp * Math.max(0, clear - frontZ - depth);
-    }
-  }
-
-  setKnifeGold(on) {
-    // golden glowing Bowie finish
-    if (!this.knifeBlade) return;
-    this.knifeGold = on;
-    const m = this.knifeBlade.material;
-    if (!takesPbrFinish(m)) return; // see takesPbrFinish: `emissive` on an unlit material throws mid-render
-    if (on) {
-      m.color.set(0xd8b84a);
-      m.metalness = 0.9; m.roughness = 0.22;
-      m.emissive = new THREE.Color(0xa87c14);
-      m.emissiveIntensity = 0.9;
-    } else {
-      m.color.set(0x78808d); m.emissive = new THREE.Color(0x000000); m.emissiveIntensity = 0;
-    }
-    this.knifeTip.material = m;
-  }
-
   /**
    * Animated weapon change: lower what is in frame, exchange the model out of
    * sight, then let equipT raise the new one. Falls through to an immediate
@@ -405,28 +240,7 @@ export class WeaponRig {
     if (hands) (vm || group).add(hands);
     this.root.add(group);
     this.current = { id, pap, group, parts: group.userData.parts, cls: group.userData.cls };
-    // PaP living finish: clone materials, attach scrolling pattern + palette
-    this.camo = null;
-    this.goldCamo = null;
-    this.diamondCamo = null;
-    const wantDiamond = pap && (this.alwaysGold || this.diamondNext);
-    this.diamondNext = false;
-    if (wantDiamond) {
-      this.applyDiamondCamo();
-    } else if (pap) {
-      this.camo = applyPapLivingFinish(group, id, Math.random() * 10);
-      // Settle the finish onto the frame it is built. applyPapLivingFinish leaves
-      // emissive BLACK and only advance() gives it a colour, so a PaP weapon
-      // handed over by papTake() — which runs after the rig update — spent its
-      // first rendered frame as an unlit grey gun that then lit up. Dimmer than
-      // steady state rather than brighter, so it was never the white flash, but
-      // it is the same defect: the frame that builds a model must also dress it.
-      advancePapLivingFinish(this.camo, 0);
-      this.flash.material.color.setHSL(this.camo.style.hues[0], 0.95, 0.62); // PaP muzzle flash tint
-    } else {
-      this.flash.material.color.set(0xffffff);
-      if (this.alwaysGold) this.applyGoldCamo(true); // GOLD STANDARD cheat
-    }
+    this._dressFinish(group, id, pap);
     // attach flash at muzzle
     this.flash.removeFromParent();
     group.userData.muzzle.add(this.flash);
@@ -470,239 +284,6 @@ export class WeaponRig {
     if (this.current && (WEAPONS[this.current.id].bolt || WEAPONS[this.current.id].pump)) this.cycleBolt();
   }
 
-  /** Authored rest transform of an animated part, captured on first touch. */
-  _rest(o) {
-    return o.userData.__rest ?? (o.userData.__rest = {
-      p: o.position.clone(), r: o.rotation.clone(),
-    });
-  }
-
-  /** Put both gloves back exactly where the view-model authored them. */
-  _restHands() {
-    const cur = this.current;
-    if (!cur || !this._handsPosed) return;
-    for (const key of ['hand_l', 'hand_r']) {
-      const w = cur.parts[key];
-      if (!w?.userData?.__rest) continue;
-      w.position.copy(w.userData.__rest.p);
-      w.rotation.copy(w.userData.__rest.r);
-      if (w.userData.hand) resetHandPose(w.userData.hand);
-    }
-    this._handsPosed = false;
-  }
-
-  /**
-   * Move a support/trigger hand onto something it is supposed to be holding.
-   *
-   * `amt` 0 leaves it on its authored grip, 1 puts it fully on the target.
-   * `grip` re-closes the fingers, which is what stops a hand from sliding
-   * around a magazine like a decal instead of taking hold of it.
-   */
-  _handTo(w, amt, tx, ty, tz, { roll = 0, pitch = 0, yaw = 0, grip = null, spread = 1 } = {}) {
-    if (!w) return;
-    const r = this._rest(w);
-    this._handsPosed = true;
-    const k = clamp(amt, 0, 1);
-    w.position.set(
-      lerp(r.p.x, tx, k),
-      lerp(r.p.y, ty, k),
-      lerp(r.p.z, tz, k),
-    );
-    w.rotation.set(r.r.x + pitch * k, r.r.y + yaw * k, r.r.z + roll * k);
-    const h = w.userData.hand;
-    if (h && grip !== null) {
-      setHandPose(h, { curl: lerp(h.userData.baseCurl, grip, k), spread: lerp(1, spread, k) });
-    }
-  }
-
-  _reloadAnim(t) {
-    // t: 0..1 normalized reload progress. Returns {dip, roll} and moves parts.
-    const cur = this.current;
-    if (!cur) return { dip: 0, roll: 0 };
-    const p = cur.parts;
-    const dip = Math.sin(Math.min(t * 1.12, 1) * Math.PI);
-    const cls = WEAPONS[cur.id].cls;
-    const phase = (a, b) => clamp((t - a) / (b - a), 0, 1);
-    const bell = (a, b) => Math.sin(phase(a, b) * Math.PI);
-    // mag swap window for mag-fed weapons
-    let magY = 0;
-    if (p.mag && !WEAPONS[cur.id].breakAction) {
-      const out = phase(0.08, 0.3), inn = phase(0.45, 0.68);
-      const off = out < 1 ? -0.16 * Math.sin(out * Math.PI * 0.5) : (inn < 1 ? -0.16 * Math.cos(inn * Math.PI * 0.5) : 0);
-      p.mag.position.y = p.mag.userData.y0 ?? (p.mag.userData.y0 = p.mag.position.y);
-      p.mag.position.y += off;
-      magY = off;
-    }
-
-    // ---- support hand: it has to actually HOLD what it is moving ----------
-    //
-    // The magazine used to slide out of the weapon on its own while the left
-    // glove stayed welded to the handguard. Now the hand leaves the handguard,
-    // closes on the magazine, rides it out, goes off-frame for a fresh one,
-    // brings it back, seats it, slaps the floorplate, and only then goes back
-    // to holding the gun.
-    const hl = p.hand_l, hr = p.hand_r;
-    if (hl && p.mag && !WEAPONS[cur.id].breakAction) {
-      const m = p.mag.position, m0 = p.mag.userData.y0 ?? m.y;
-      const reach = phase(0.04, 0.20);        // travel down to the magwell
-      const carry = phase(0.20, 0.34);        // ride the mag out
-      const away = phase(0.34, 0.44);         // drop it, go off-frame
-      const back = phase(0.44, 0.60);         // return with a fresh one
-      const seat = phase(0.60, 0.70);         // push it home
-      const slap = bell(0.70, 0.80);          // palm the floorplate
-      const home = phase(0.82, 1.0);          // back on the handguard
-      // where the hand needs to be to have hold of the magazine body
-      const gx = m.x, gy = m0 + magY - 0.055, gz = m.z + 0.012;
-      let amt = 0, tx = gx, ty = gy, tz = gz, grip = 1.0;
-      if (home > 0) { amt = 1 - home; grip = 1.0; }
-      else if (back > 0) { amt = 1; tx = gx - 0.10 * (1 - back); ty = gy - 0.30 * (1 - back); grip = 1.0; }
-      else if (away > 0) { amt = 1; tx = gx - 0.10 * away; ty = gy - 0.30 * away; grip = 1.0; }
-      else if (carry > 0) { amt = 1; grip = 1.0; }
-      else { amt = reach; grip = lerp(0.45, 1.0, reach); }
-      if (seat > 0 && back >= 1) ty = gy + 0.012 * seat;
-      this._handTo(hl, amt, tx, ty + slap * 0.016, tz, {
-        roll: 0.42, pitch: -0.28, grip, spread: 0.9,
-      });
-    } else if (hl && (p.pump || p.magtube)) {
-      // Pump gun: shells go in off-frame, then the forend is racked.
-      const feed = bell(0.10, 0.62), rack = bell(0.68, 0.96);
-      const rest = this._rest(hl);
-      if (rack > 0.01 && p.pump) {
-        this._handTo(hl, 1, rest.p.x, rest.p.y, (p.pump.userData.z0 ?? p.pump.position.z) + rack * 0.09 + 0.02, {
-          grip: 1.05, spread: 0.9,
-        });
-      } else if (feed > 0.01) {
-        this._handTo(hl, feed, rest.p.x - 0.10, rest.p.y - 0.13, rest.p.z + 0.16, {
-          roll: 0.5, pitch: -0.4, grip: 0.55, spread: 1.15,
-        });
-      } else {
-        this._restHands();
-      }
-    } else if (hl && !p.mag) {
-      // Stripper clips, en-blocs, break actions: the hand leaves the forend,
-      // loads over the open action, then comes back down.
-      const load = bell(0.14, 0.70);
-      if (load > 0.01) {
-        const rest = this._rest(hl);
-        this._handTo(hl, load, rest.p.x - 0.03, rest.p.y + 0.10, rest.p.z + 0.20, {
-          roll: 0.55, pitch: -0.5, grip: 0.5, spread: 1.2,
-        });
-      } else {
-        this._restHands();
-      }
-    }
-    // Charging handle / bolt: the same hand comes off the handguard, yanks it
-    // back and lets it fly. Sold by the hand leading the part, not trailing it.
-    const charger = p.charge || p.oprod_handle || p.bolt_h || p.bolt_knob;
-    if (hl && charger && p.mag && cls !== 'pistol') {
-      const yank = bell(0.80, 0.94);
-      if (yank > 0.01) {
-        const c = charger.position;
-        this._handTo(hl, yank, c.x + 0.030, c.y + 0.010, c.z + 0.030 + yank * 0.055, {
-          roll: -0.55, pitch: 0.22, grip: 1.05, spread: 0.85,
-        });
-      }
-    }
-    // Pistols: the support hand comes across, cups the slide and racks it.
-    if (hl && cls === 'pistol' && p.slide) {
-      const rack = bell(0.60, 0.88);
-      if (rack > 0.01) {
-        this._handTo(hl, rack, 0.028, 0.046, 0.030 + rack * 0.05, { roll: -0.9, pitch: 0.3, grip: 1.05 });
-      }
-    }
-    // The trigger hand stays on the grip, but the wrist rolls the weapon over
-    // to present the magwell — the reason a real reload looks like one motion.
-    if (hr) {
-      const r = this._rest(hr);
-      this._handsPosed = true;
-      hr.rotation.set(r.r.x + dip * 0.10, r.r.y, r.r.z + dip * 0.14);
-      const trig = hr.userData.hand;
-      if (trig) setHandPose(trig, { curls: [1 - dip * 0.55, 1, 1, 1] }); // finger off the trigger
-    }
-    // charging / bolt / slide action near the end
-    if (cur.cls === 'pistol' && p.slide) {
-      p.slide.position.z = p.slide.userData.z0 ?? (p.slide.userData.z0 = p.slide.position.z);
-      p.slide.position.z += t > 0.62 && t < 0.85 ? Math.sin((t - 0.62) / 0.23 * Math.PI) * 0.05 : 0;
-    }
-    if ((cur.id === 'kar98') && p.bolt) {
-      const c = phase(0.55, 0.95);
-      p.bolt.position.z = (p.bolt.userData.z0 ?? (p.bolt.userData.z0 = p.bolt.position.z)) + Math.sin(c * Math.PI) * 0.07;
-      p.bolt_knob.position.z = (p.bolt_knob.userData.z0 ?? (p.bolt_knob.userData.z0 = p.bolt_knob.position.z)) + Math.sin(c * Math.PI) * 0.07;
-    }
-    if (p.cover && (cur.id === 'mg42' || cur.id === 'browning')) {
-      p.cover.rotation.x = t > 0.1 && t < 0.6 ? -0.5 * Math.sin(phase(0.1, 0.6) * Math.PI) : 0;
-    }
-    if (cur.id === 'mg42' && p.drum) {
-      // drum drops out, fresh drum seats home (synced to the belt foley)
-      const out = phase(0.14, 0.32), inn = phase(0.52, 0.74);
-      const off = out < 1 ? -0.13 * Math.sin(out * Math.PI * 0.5) : (inn < 1 ? -0.13 * Math.cos(inn * Math.PI * 0.5) : 0);
-      p.drum.position.y = (p.drum.userData.y0 ?? (p.drum.userData.y0 = p.drum.position.y)) + off;
-      p.drum_cap.position.y = (p.drum_cap.userData.y0 ?? (p.drum_cap.userData.y0 = p.drum_cap.position.y)) + off;
-      if (p.belt_link) p.belt_link.visible = t < 0.14 || t > 0.74;
-    }
-    if (cur.id === 'ptrs41' && p.clip) {
-      // spent clip pops out the top; new one pressed down
-      const out = phase(0.18, 0.36), inn = phase(0.5, 0.7);
-      const off = out < 1 ? 0.12 * Math.sin(out * Math.PI * 0.5) : (inn < 1 ? 0.12 * Math.cos(inn * Math.PI * 0.5) : 0);
-      p.clip.position.y = (p.clip.userData.y0 ?? (p.clip.userData.y0 = p.clip.position.y)) + off;
-    }
-    if (cur.id === 'dbshotgun' && p.barrels) {
-      // break open then close
-      const open = t < 0.55 ? phase(0.05, 0.3) - phase(0.35, 0.55) : 0;
-      p.barrels.rotation.x = open * 0.55;
-    }
-    if (cur.id === 'panzerschreck' && p.rocket) {
-      p.rocket.visible = t > 0.5;
-    }
-    return { dip, roll: dip * 0.30 };
-  }
-
-  _boltAnim(dt) {
-    // bolt/pump cycle between shots
-    if (this.boltT <= 0) return;
-    this.boltT += dt;
-    const cur = this.current;
-    const DUR = 0.62;
-    const t = Math.min(1, this.boltT / DUR);
-    const p = cur.parts;
-    const arc = Math.sin(t * Math.PI);
-    if (cur.id === 'kar98' && p.bolt) {
-      p.bolt.position.z = (p.bolt.userData.z0 ?? (p.bolt.userData.z0 = p.bolt.position.z)) + arc * 0.07;
-      p.bolt_knob.position.z = (p.bolt_knob.userData.z0 ?? (p.bolt_knob.userData.z0 = p.bolt_knob.position.z)) + arc * 0.07;
-      p.bolt_knob.rotation.y = arc * 0.7;
-    }
-    if ((cur.id === 'mosin' || cur.id === 'springfield') && p.bolt_h) {
-      // handle rotates up, bolt draws back, then seats home again
-      const pull = Math.sin(t * Math.PI);
-      p.bolt_h.position.z = (p.bolt_h.userData.z0 ?? (p.bolt_h.userData.z0 = p.bolt_h.position.z)) + pull * 0.075;
-      p.bolt_h.rotation.z = (cur.id === 'mosin' ? -0.9 : -0.4) - pull * 0.55;
-      p.bolt_knob.position.z = (p.bolt_knob.userData.z0 ?? (p.bolt_knob.userData.z0 = p.bolt_knob.position.z)) + pull * 0.075;
-      p.bolt_knob.position.y = (p.bolt_knob.userData.y0 ?? (p.bolt_knob.userData.y0 = p.bolt_knob.position.y)) + pull * 0.02;
-    }
-    if (cur.id === 'trench' && p.pump) {
-      p.pump.position.z = (p.pump.userData.z0 ?? (p.pump.userData.z0 = p.pump.position.z)) + arc * 0.09;
-      // the hand goes WITH the forend — it is the thing racking it
-      if (p.hand_l) {
-        const r = this._rest(p.hand_l);
-        this._handsPosed = true;
-        p.hand_l.position.set(r.p.x, r.p.y, r.p.z + arc * 0.09);
-        p.hand_l.rotation.set(r.r.x, r.r.y, r.r.z - arc * 0.12);
-      }
-    }
-    // Bolt guns: the firing hand leaves the grip, lifts the handle, draws the
-    // bolt and returns. Nothing else about a bolt action reads as deliberate.
-    if (p.hand_r && (cur.id === 'kar98' || cur.id === 'mosin' || cur.id === 'springfield')) {
-      const knob = p.bolt_knob || p.bolt_h;
-      if (knob) {
-        const reach = Math.min(1, arc * 1.6);
-        this._handTo(p.hand_r, reach, knob.position.x + 0.006, knob.position.y + 0.030, knob.position.z + 0.045, {
-          roll: -0.75, pitch: 0.30, grip: 1.05, spread: 0.8,
-        });
-      }
-    }
-    if (t >= 1) this.boltT = 0;
-  }
-
   update(dt, opts) {
     const { ads, moving, sprinting, sliding, mouseX, mouseY } = opts;
     this.adsT = damp(this.adsT, ads ? 1 : 0, 14, dt);
@@ -730,30 +311,7 @@ export class WeaponRig {
       this.flashT -= dt;
       this.flash.material.opacity = Math.max(0, this.flashT / 0.045);
     }
-    if (this.goldCamo) {
-      const gc = this.goldCamo;
-      gc.t += dt;
-      // slow sheen breathing + a sharp glint sweeping past every ~3.5s
-      const base = 0.08 + Math.sin(gc.t * 1.7) * 0.04;
-      const cyc = (gc.t % 3.5) / 3.5;
-      const glint = cyc < 0.12 ? Math.sin((cyc / 0.12) * Math.PI) * 0.55 : 0;
-      for (const m of gc.mats) m.emissiveIntensity = base + glint;
-    }
-    if (this.diamondCamo) {
-      const dc = this.diamondCamo;
-      dc.t += dt;
-      // elegant twinkle: sparse sharp sparkles, faint icy hue drift
-      for (let i = 0; i < dc.mats.length; i++) {
-        const m = dc.mats[i];
-        const tw = Math.max(0, Math.sin(dc.t * 2.2 + i * 2.39)) ** 9;
-        m.emissiveIntensity = 0.16 + tw * 1.5;
-        m.emissive.setHSL(0.58 + Math.sin(dc.t * 0.4 + i) * 0.06, 0.25, 0.9);
-      }
-    }
-    // PaP finish: scroll pattern + pulse palette while you play
-    if (this.camo) {
-      advancePapLivingFinish(this.camo, dt);
-    }
+    this._animateFinish(dt);
     this._boltAnim(dt);
     if (this.perkDrinkT > 0 && this.perkBottle) {
       this.perkDrinkT += dt;
@@ -927,3 +485,8 @@ export class WeaponRig {
     g.rotation.set(rx, ry, rz);
   }
 }
+
+// WeaponRig's ADS solve, its finishes, and its reload and bolt animation are
+// in js/weapons/rig-*.js. Each file is a class whose methods are copied onto
+// WeaponRig.prototype here, as Game's are; a name defined twice fails at load.
+installMixins(WeaponRig, [WeaponRigAds, WeaponRigFinish, WeaponRigReload]);

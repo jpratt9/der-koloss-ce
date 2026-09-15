@@ -7,6 +7,7 @@
 // - No module in js/weapons/ imports js/weapons.js. One that did would put an
 //   import cycle through the entry point every caller loads.
 // - Every weapon has exactly one view-model builder in js/weapons/models/.
+// - Every WeaponRig method in js/weapons/rig-*.js is on WeaponRig.prototype.
 // - readWeaponsSource() hands the text checks every weapons file.
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -62,6 +63,28 @@ assert.deepEqual([...builderFile.keys()].sort(), Object.keys(entry.WEAPONS).sort
   'the view-model builders must cover exactly the WEAPONS ids');
 
 // ---------------------------------------------------------------------------
+// WeaponRig's rig-*.js files are installed on WeaponRig.prototype, method for
+// method. A file left out of the install list would leave its methods
+// undefined until the first call, mid-match.
+// ---------------------------------------------------------------------------
+const rigFiles = files.filter((f) => /^rig-[\w-]+\.js$/.test(f));
+assert.ok(rigFiles.length >= 3, `expected WeaponRig's method files in js/weapons/, found ${rigFiles.length}`);
+const rigMethodFile = new Map();
+for (const file of rigFiles) {
+  const classes = Object.values(await loadGameModule('weapons', file))
+    .filter((v) => typeof v === 'function' && Function.prototype.toString.call(v).startsWith('class '));
+  assert.equal(classes.length, 1, `js/weapons/${file} must export exactly one class of WeaponRig methods`);
+  const names = Object.getOwnPropertyNames(classes[0].prototype).filter((n) => n !== 'constructor');
+  assert.ok(names.length, `js/weapons/${file} holds no methods`);
+  for (const name of names) {
+    assert.equal(rigMethodFile.has(name), false, `WeaponRig.${name} is defined in both ${rigMethodFile.get(name)} and ${file}`);
+    rigMethodFile.set(name, file);
+    assert.equal(entry.WeaponRig.prototype[name], classes[0].prototype[name],
+      `WeaponRig.${name} from js/weapons/${file} is not installed on WeaponRig.prototype`);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // readWeaponsSource() holds every weapons file.
 // ---------------------------------------------------------------------------
 const source = readWeaponsSource();
@@ -71,4 +94,5 @@ for (const file of ['weapons.js', ...files.map((f) => `weapons/${f}`)]) {
 
 console.log(`Weapon modules OK: js/weapons.js exports ${Object.keys(entry).length} names; `
   + `${files.length} modules in js/weapons/ (${specifiers} relative imports) never import it; `
-  + `${builderFile.size} weapons have one builder each across ${modelFiles.length} class files; readWeaponsSource() holds them all.`);
+  + `${builderFile.size} weapons have one builder each across ${modelFiles.length} class files; `
+  + `${rigMethodFile.size} WeaponRig methods from ${rigFiles.length} files installed; readWeaponsSource() holds them all.`);

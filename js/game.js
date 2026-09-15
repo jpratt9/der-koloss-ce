@@ -1,7 +1,7 @@
 // Game orchestrator: rendering, loop, shooting, economy, rounds, interactions,
 import * as THREE from 'three';
 
-import { clamp, rand, dist2D } from './utils.js';
+import { clamp, rand, dist2D, installMixins } from './utils.js';
 import { input, lockPointer, endFrame, isAimDown } from './input.js';
 import { audio } from './audio.js';
 import { buildMap } from './map.js';
@@ -487,14 +487,8 @@ export class Game {
 // Game's methods are split by domain across js/game/*.js. Each file is a class
 // whose methods are copied onto Game.prototype here: one `this`, one Game to
 // every caller. A name defined twice is a split mistake, so it fails at load.
-for (const part of [
+installMixins(Game, [
   GameFramePacing, GameGraphics, GameBallistics, GameRounds, GameCombat, GameProjectiles,
   GameCameraHud, GameNetcode, GameCheats, GameMysteryBox, GamePackAPunch, GameInteractions,
   GameMachines, GamePlayers, GameRemoteCombat, GameBots,
-]) {
-  for (const key of Object.getOwnPropertyNames(part.prototype)) {
-    if (key === 'constructor') continue;
-    if (Object.getOwnPropertyDescriptor(Game.prototype, key)) throw new Error(`Game.${key} is defined twice`);
-    Object.defineProperty(Game.prototype, key, Object.getOwnPropertyDescriptor(part.prototype, key));
-  }
-}
+]);
