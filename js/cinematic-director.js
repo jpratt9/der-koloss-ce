@@ -2,26 +2,17 @@
 // cinematic.html; it never touches normal gameplay, networking, saves, or input.
 import * as THREE from 'three';
 import {assets} from './assets.js';
-import {buildMap} from './map.js';
-import {SoldierVisual} from './player.js';
-import {ZombieVisual, createZombieModel, zombiePoseForState, applyHellhoundPose, ZSTATES} from './zombies.js';
-import {buildViewmodel,WeaponRig,getStats} from './weapons.js';
+import {zombiePoseForState, applyHellhoundPose, ZSTATES} from './zombies.js';
+import {getStats} from './weapons.js';
 import {FPS,v,clamp01,shortestAngle,blendAngle,worldPoint,quatDelta,planarDistance} from './cinematic-director/math.js';
 import {OPENING_GAMEPLAY_T0,openingGameplayForward} from './cinematic-director/opening.js';
 import {SHOTS} from './cinematic-director/shots.js';
-import {openingRoleLook,DirectorMover,actionAt,ACTION_BLEND_FRAMES,actionTimeline,openingCameraWindowDistance,openingV2CameraPoseAt,openingCameraKinematics,pointOnRail} from './cinematic-director/motion.js';
+import {openingRoleLook,ACTION_BLEND_FRAMES,actionTimeline,openingCameraWindowDistance,openingV2CameraPoseAt,openingCameraKinematics,pointOnRail} from './cinematic-director/motion.js';
 import {setBlendedDeterministicPose,solveArmIK,applyDeterministicFootPlant,poseSnapshot} from './cinematic-director/pose.js';
-import {updateDirectorWeaponBinding,makeDirectorWeapon,attachDirectorWeapon} from './cinematic-director/director-weapon.js';
-
-const params = new URLSearchParams(location.search);
-const capture = params.get('capture') === '1';
-const requestedShot = params.get('shot') || 'factoryWake';
-const requestedWeapon = params.get('weapon') || 'm1911';
-const initialFrame = Math.max(0, Number(params.get('frame') || 0) | 0);
-const captureWidth=capture?Math.max(1,Number(params.get('width')||innerWidth)|0):innerWidth;
-const captureHeight=capture?Math.max(1,Number(params.get('height')||innerHeight)|0):innerHeight;
-const stillGate=capture&&params.get('stillGate')==='1';
-if (capture) document.body.classList.add('capture');
+import {updateDirectorWeaponBinding} from './cinematic-director/director-weapon.js';
+import {capture,requestedShot,requestedWeapon,initialFrame,stillGate,shot,status,overlay,renderer,scene,camera,shotKey,projectWitness,objectScreenRect,rectOverlapRatio,rectIntersectsCenter80} from './cinematic-director/stage.js';
+import {map,mapPracticalLamps,openingEnv,buildWorld,bindOpeningEnvironment,updateOpeningEnvironment,applyState} from './cinematic-director/world.js';
+import {actors,zombies,dog,displayWeapon,packMachineProp,boxSpinProp,machineArc,monkeyProp,chainArcs,dgOrder,trapArc,viewRig,powerPractical,powerReach,combatTracers,buildCast} from './cinematic-director/cast.js';
 
 function mulberry32(seed) {
   return () => {
@@ -38,46 +29,6 @@ function seedForShot(name){
   return (h^0x8ec7a5d3)>>>0;
 }
 
-const shot = SHOTS[requestedShot] || SHOTS.factoryWake;
-const canvas = document.querySelector('#cinematic-canvas');
-const status = document.querySelector('#director-status');
-const overlay = document.querySelector('#director-overlay');
-const renderer = new THREE.WebGLRenderer({canvas,antialias:true,alpha:false,preserveDrawingBuffer:capture});
-renderer.setPixelRatio(capture ? 1 : Math.min(devicePixelRatio,2));
-renderer.setSize(captureWidth,captureHeight,false);
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.14;
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x02050a);
-scene.fog = new THREE.FogExp2(0x07101b,0.012);
-const camera = new THREE.PerspectiveCamera(42,captureWidth/captureHeight,.05,180);
-scene.add(camera);
-const fill = new THREE.HemisphereLight(0x759bc8,0x17110c,.58); scene.add(fill);
-const rim = new THREE.DirectionalLight(0x8ab8e7,3.2); rim.position.set(-15,28,8); rim.castShadow=true; scene.add(rim);
-const shotKey = new THREE.PointLight(0x91b9e8,18,24,1.7); shotKey.position.copy(shot.camera[1][1]).add(v(0,3,2)); scene.add(shotKey);
-
-let map;
-const actors=[];
-const zombies=[];
-let dog=null;
-let displayWeapon=null;
-let packMachineProp=null;
-let boxSpinProp=null;
-let machineArc=null;
-let monkeyProp=null;
-let chainArcs=null;
-let dgOrder=[];
-let trapArc=null;
-let viewRig=null;
-let powerPractical=null;
-let powerReach=null;
-let mapPracticalLamps=[];
-let openingEnv=null;
-const combatTracers=[];
 let papDiamondEquipped=false;
 let papKnucklesStarted=false;
 let frame=initialFrame;
@@ -86,286 +37,6 @@ let ready=false;
 let lastValidation=[];
 let lastMotionDiagnostics=[];
 let validationHistory={frame:-2,actors:[],zombies:[],dog:null};
-
-function bindOpeningEnvironment(){
-  if(!shot.openingPlate)return;
-  map.group.updateMatrixWorld(true);
-  const near=(object,x,y,z,epsilon=.08)=>Math.abs(object.position.x-x)<epsilon&&Math.abs(object.position.y-y)<epsilon&&Math.abs(object.position.z-z)<epsilon;
-  const westLamp=mapPracticalLamps.find(l=>near(l,-7,6.1,-52,.16));
-  const eastLamp=mapPracticalLamps.find(l=>near(l,7,6.1,-52,.16));
-  const dust=map.group.children.find(o=>o.isPoints&&o.geometry?.attributes?.position?.count===90);
-  const chain=map.group.children.find(o=>o.isMesh&&o.geometry?.type==='CylinderGeometry'&&near(o,-5,6.2,-48,.12));
-  const hook=map.group.children.find(o=>o.isMesh&&o.geometry?.type==='TorusGeometry'&&near(o,-5,5.32,-48,.14));
-  let chainPivot=null;
-  if(chain&&hook){chainPivot=new THREE.Group();chainPivot.position.set(-5,7,-48);map.group.add(chainPivot);chainPivot.attach(chain);chainPivot.attach(hook);}
-  const v3Chain=map.group.children.find(o=>o.isMesh&&o.geometry?.type==='CylinderGeometry'&&near(o,-2,6.4,-56,.12));
-  const v3Hook=map.group.children.find(o=>o.isMesh&&o.geometry?.type==='TorusGeometry'&&near(o,-2,5.72,-56,.14));
-  let v3ChainPivot=null,v3SupportDust=null,v3SupportDustBase=null;
-  if(shot.openingV3&&v3Chain&&v3Hook){
-    v3ChainPivot=new THREE.Group();v3ChainPivot.position.set(-2,7,-56);map.group.add(v3ChainPivot);v3ChainPivot.attach(v3Chain);v3ChainPivot.attach(v3Hook);
-    // Reuse the shipped skylight-dust material and deterministic factory-dust
-    // language for a local support shake. This is capture-only atmosphere, not
-    // replacement architecture or a proxy subject.
-    v3SupportDustBase=new Float32Array([
-      -.08,-.02,-.02, .05,.00,.01, -.02,-.04,.04, .10,-.01,-.04,
-      -.12,.02,.02, .02,-.06,-.02, .13,.01,.03, -.05,-.08,-.05,
-      .07,-.03,.06, -.10,-.05,.05, .00,-.10,.00, .11,-.07,-.02,
-      -.04,-.12,.03, .04,-.14,-.04,
-    ]);
-    const supportDustGeometry=new THREE.BufferGeometry();supportDustGeometry.setAttribute('position',new THREE.BufferAttribute(v3SupportDustBase.slice(),3));
-    const supportDustMaterial=dust?.material?.clone?.()||new THREE.PointsMaterial({color:0x9db4dd,size:.02,transparent:true,opacity:.55,sizeAttenuation:true});
-    supportDustMaterial.size=Math.max(.035,supportDustMaterial.size||0);supportDustMaterial.opacity=.72;
-    v3SupportDust=new THREE.Points(supportDustGeometry,supportDustMaterial);v3SupportDust.position.set(-2,6.82,-56);v3SupportDust.visible=false;map.group.add(v3SupportDust);
-  }
-  const v4Chain=map.group.children.find(o=>o.isMesh&&o.geometry?.type==='CylinderGeometry'&&near(o,7,6.05,-58,.12));
-  const v4Hook=map.group.children.find(o=>o.isMesh&&o.geometry?.type==='TorusGeometry'&&near(o,7,5.02,-58,.14));
-  let v4ChainPivot=null,v4SupportDust=null,v4SupportDustBase=null,v4SubjectLight=null;
-  if(shot.openingV4&&v4Chain&&v4Hook){
-    v4ChainPivot=new THREE.Group();v4ChainPivot.position.set(7,7,-58);map.group.add(v4ChainPivot);v4ChainPivot.attach(v4Chain);v4ChainPivot.attach(v4Hook);
-    v4SupportDustBase=new Float32Array([
-      -.10,-.02,-.03, .06,.00,.02, -.03,-.04,.05, .12,-.01,-.05,
-      -.14,.02,.03, .03,-.06,-.03, .15,.01,.04, -.06,-.08,-.06,
-      .08,-.03,.07, -.12,-.05,.06, .00,-.10,.00, .13,-.07,-.03,
-      -.05,-.12,.04, .05,-.14,-.05,
-    ]);
-    const supportDustGeometry=new THREE.BufferGeometry();supportDustGeometry.setAttribute('position',new THREE.BufferAttribute(v4SupportDustBase.slice(),3));
-    const supportDustMaterial=dust?.material?.clone?.()||new THREE.PointsMaterial({color:0x9db4dd,size:.02,transparent:true,opacity:.55,sizeAttenuation:true});
-    supportDustMaterial.size=Math.max(.045,supportDustMaterial.size||0);supportDustMaterial.opacity=.78;
-    v4SupportDust=new THREE.Points(supportDustGeometry,supportDustMaterial);v4SupportDust.position.set(7,6.82,-58);v4SupportDust.visible=false;map.group.add(v4SupportDust);
-    // A capture light motivated by the two shipped factory practicals lifts
-    // the real metal arch and rear machine out of crushed black without adding
-    // geometry or making the dormant ring read as powered.
-    v4SubjectLight=new THREE.PointLight(0xa8bed6,24,14,1.8);v4SubjectLight.position.set(-1.2,3.1,-53.8);scene.add(v4SubjectLight);
-  }
-  openingEnv={
-    westLamp,eastLamp,dust,dustBase:dust?.geometry?.attributes?.position?.array?.slice?.()||null,chainPivot,
-    v3ChainPivot,v3SupportDust,v3SupportDustBase,v4ChainPivot,v4SupportDust,v4SupportDustBase,v4SubjectLight,
-    teleC:map.teleporters.find(t=>t.id==='teleC'),
-    dFact:map.doors.find(d=>d.id==='d_fact'),dMainL:map.doors.find(d=>d.id==='d_mainL'),papGroup:map.pap?.slot?.parent||null,
-  };
-}
-
-function updateOpeningEnvironment(globalFrame){
-  if(!openingEnv)return;
-  map.power.on=false;
-  for(const tele of map.teleporters){tele.linked=false;tele.ringMat.emissiveIntensity=tele===openingEnv.teleC?.15:.12;tele.ringMat.emissive.setHex(0x3366aa);}
-  for(const door of [openingEnv.dFact,openingEnv.dMainL])if(door){door.open=false;door.animT=0;door.mesh.visible=true;door.mesh.position.y=1.5;}
-  // V2 tells a locked -> power -> links -> PaP causal story. The physical PaP
-  // prop is capture-hidden throughout this preactivation opening so OP07 cannot
-  // leak even a peripheral sign/body pixel. Normal gameplay is untouched.
-  if(openingEnv.papGroup)openingEnv.papGroup.visible=!shot.openingV2;
-  if(openingEnv.chainPivot){const active=globalFrame>=90&&globalFrame<210,age=Math.max(0,globalFrame-90)/FPS;openingEnv.chainPivot.rotation.z=active?THREE.MathUtils.degToRad(1.8)*Math.sin(age*1.45)*Math.exp(-age*.12):0;}
-  if(openingEnv.v3ChainPivot){
-    const local=globalFrame-52,active=shot.openingV3&&local>=0&&globalFrame<90,age=Math.max(0,local)/FPS;
-    openingEnv.v3ChainPivot.rotation.z=active?THREE.MathUtils.degToRad(5.2)*Math.sin(age*14)*Math.exp(-age*3):0;
-    if(openingEnv.v3SupportDust&&openingEnv.v3SupportDustBase){
-      const visible=shot.openingV3&&globalFrame>=54&&globalFrame<=65,arr=openingEnv.v3SupportDust.geometry.attributes.position.array,drop=Math.max(0,globalFrame-54);
-      openingEnv.v3SupportDust.visible=visible;
-      for(let i=0;i<arr.length/3;i++){
-        arr[i*3]=openingEnv.v3SupportDustBase[i*3]+Math.sin(drop*.38+i*1.7)*.012;
-        arr[i*3+1]=openingEnv.v3SupportDustBase[i*3+1]-.012*drop*drop*(.65+(i%4)*.11);
-        arr[i*3+2]=openingEnv.v3SupportDustBase[i*3+2]+Math.cos(drop*.31+i)*.008;
-      }
-      openingEnv.v3SupportDust.material.opacity=visible?.72*(1-drop/18):0;
-      openingEnv.v3SupportDust.geometry.attributes.position.needsUpdate=true;
-    }
-  }
-  if(openingEnv.v4ChainPivot){
-    const local=globalFrame-52,active=shot.openingV4&&local>=0&&globalFrame<90,age=Math.max(0,local)/FPS;
-    openingEnv.v4ChainPivot.rotation.z=active?THREE.MathUtils.degToRad(5.2)*Math.cos(age*7)*Math.exp(-age*.8):0;
-    if(openingEnv.v4SupportDust&&openingEnv.v4SupportDustBase){
-      const visible=shot.openingV4&&globalFrame>=54&&globalFrame<=65,arr=openingEnv.v4SupportDust.geometry.attributes.position.array,drop=Math.max(0,globalFrame-54);
-      openingEnv.v4SupportDust.visible=visible;
-      for(let i=0;i<arr.length/3;i++){
-        arr[i*3]=openingEnv.v4SupportDustBase[i*3]+Math.sin(drop*.38+i*1.7)*.015;
-        arr[i*3+1]=openingEnv.v4SupportDustBase[i*3+1]-.013*drop*drop*(.65+(i%4)*.11);
-        arr[i*3+2]=openingEnv.v4SupportDustBase[i*3+2]+Math.cos(drop*.31+i)*.010;
-      }
-      openingEnv.v4SupportDust.material.opacity=visible?.78*(1-drop/18):0;
-      openingEnv.v4SupportDust.geometry.attributes.position.needsUpdate=true;
-    }
-  }
-  if(openingEnv.dust&&openingEnv.dustBase){
-    const arr=openingEnv.dust.geometry.attributes.position.array,time=globalFrame/FPS,span=6.65;
-    for(let i=0;i<arr.length/3;i++){
-      const y0=openingEnv.dustBase[i*3+1],wrapped=((y0-.15-time*.14)%span+span)%span;
-      arr[i*3]=openingEnv.dustBase[i*3]+Math.sin(time*.4+i)*.045;arr[i*3+1]=.15+wrapped;arr[i*3+2]=openingEnv.dustBase[i*3+2];
-    }
-    openingEnv.dust.geometry.attributes.position.needsUpdate=true;
-  }
-  let west=5,east=5;
-  if(globalFrame>=90&&globalFrame<210){
-    east=1.8;const u=(globalFrame-146)/12,pulse=u<0||u>=1?0:(u<.24?u/.24:Math.pow(1-(u-.24)/.76,1.7));west=5+pulse*11;
-  }else if(globalFrame>=210&&globalFrame<330){west=8;east=3;}
-  else if(globalFrame>=330&&globalFrame<794){west=5.5;east=15.5;}
-  if(openingEnv.westLamp)openingEnv.westLamp.intensity=west;
-  if(openingEnv.eastLamp)openingEnv.eastLamp.intensity=east;
-  const op1Lift=globalFrame>=72&&globalFrame<90?clamp01((globalFrame-72)/17)*.08:0;
-  renderer.toneMappingExposure=1.14*(1+op1Lift);
-  shotKey.intensity=globalFrame<90?7:(globalFrame<330?10:(globalFrame<794?14:17));
-  shotKey.color.setHex(globalFrame<794?0x9eb9dc:0xc7d7ef);
-}
-
-function applyState(){
-  map.power.on=!!shot.state.power;
-  if(map.power.on){map.power.lever.rotation.x=.7; for(const p of map.perks)p.lamp.intensity=9;}
-  for(const tp of map.teleporters){tp.linked=!!shot.state.tele?.includes(tp.id);tp.ringMat.emissiveIntensity=tp.linked?1.6:(map.power.on ? .7 : .12);}
-  const mainDoor=map.doors.find(x=>x.id==='d_mainL'); if(mainDoor&&shot.state.mainDoor)map.openDoor(mainDoor);
-}
-
-function buildCast(){
-  if(shot.cinematicPack){
-    map.moveBox(Math.max(0,Math.min(map.box.locations.length-1,shot.boxLocation||0)));
-    fill.intensity=.72;
-    rim.intensity=3.8;
-    shotKey.intensity=16;
-    shotKey.color.setHex(shot.state.power?0x9dbbd7:0xb18a64);
-    if(shot.machine==='papCycle'){
-      packMachineProp=buildViewmodel('mp40',true);
-      packMachineProp.scale.setScalar(1.34);
-      packMachineProp.position.set(0,1.12,.78);
-      packMachineProp.rotation.set(-.04,-.18,.02);
-      packMachineProp.traverse(o=>{if(o.isMesh){o.castShadow=true;o.frustumCulled=false;}});
-      map.pap.slot.parent.add(packMachineProp);
-    }
-    if(shot.machine==='boxSpin'){
-      boxSpinProp=buildViewmodel('raygun',false);
-      boxSpinProp.scale.setScalar(1.38);
-      boxSpinProp.position.set(0,1.18,0);
-      boxSpinProp.traverse(o=>{if(o.isMesh){o.castShadow=true;o.frustumCulled=false;}});
-      map.box.group.add(boxSpinProp);
-    }
-    if(shot.machine==='trapWest'||shot.machine==='trapEast'){
-      const x=shot.machine==='trapWest'?-14:14,z=-12;
-      machineArc=new THREE.Group();
-      const coreMat=new THREE.MeshBasicMaterial({color:0xe8fbff,transparent:true,opacity:.9,blending:THREE.AdditiveBlending,depthWrite:false});
-      const haloMat=new THREE.MeshBasicMaterial({color:0x6ed8ff,transparent:true,opacity:.34,blending:THREE.AdditiveBlending,depthWrite:false});
-      for(let strand=0;strand<4;strand++){
-        const points=[];
-        for(let i=0;i<=14;i++){
-          const q=i/14;
-          points.push(v(x+.02*Math.sin(q*Math.PI*2+strand),.35+q*2.15+.16*Math.sin(q*Math.PI*5+strand),z-1.05+q*2.10));
-        }
-        const curve=new THREE.CatmullRomCurve3(points);
-        machineArc.add(new THREE.Mesh(new THREE.TubeGeometry(curve,28,.014,5,false),coreMat.clone()));
-        machineArc.add(new THREE.Mesh(new THREE.TubeGeometry(curve,28,.045,5,false),haloMat.clone()));
-      }
-      scene.add(machineArc);
-    }
-    return;
-  }
-  if(shot.armory){
-    map.group.visible=false;
-    scene.fog=null;
-    scene.background=new THREE.Color(0x020306);
-    fill.intensity=1.35;
-    rim.intensity=7.5;
-    shotKey.intensity=32;
-    shotKey.color.setHex(0xc4dcff);
-    displayWeapon=buildViewmodel(requestedWeapon,false);
-    displayWeapon.scale.setScalar(1.48);
-    displayWeapon.position.set(0,.04,0);
-    displayWeapon.rotation.set(-.08,-.72,.02);
-    displayWeapon.traverse(o=>{if(o.isMesh){o.castShadow=true;o.frustumCulled=false;}});
-    scene.add(displayWeapon);
-    return;
-  }
-  if(shot.povWeapon){viewRig=new WeaponRig(camera);viewRig.equip(shot.povWeapon,false);viewRig.applyGoldCamo(true);}
-  if(shot.powerEvent){
-    powerPractical=new THREE.PointLight(0x78bfff,0,13,1.45);powerPractical.position.set(-4.05,2.15,-27.15);scene.add(powerPractical);
-    // Reach state is metadata only.  The visible limb is the shipped skinned
-    // player arm, solved to the real map lever below; no detached primitives.
-    powerReach={active:false,error:Infinity,target:new THREE.Vector3()};
-  }
-  for(const [i,spec] of (shot.actors||[]).entries()){
-    const groundY=map.floorY(spec.p.x,spec.p.z,spec.p.y),actor=new SoldierVisual(i%4),mover=(spec.worldKeys||spec.path||spec.to)?new DirectorMover(spec,shot.duration,i):null;
-    actor.directorVariant=i%4;
-    // The old trailer-only wardrobe was assembled from rigid boxes parented to
-    // animated bones. At running poses those blocks swallowed the silhouette.
-    // Keep the shipped skinned body/atlas and remove only those additive rigid
-    // costume primitives in the isolated director.
-    actor.inner.traverse(o=>{if(o.isMesh&&!o.isSkinnedMesh){
-      // The shipped uniform is now merged bone-attached gear that is fitted to
-      // this rig in metres (js/render/SoldierGear.js). It is not the old loose
-      // costume boxes and must not be hidden or rescaled.
-      if(o.userData.soldierGear)return;
-      const p=o.geometry?.parameters||{},smallPad=o.geometry?.type==='BoxGeometry'&&p.width<=.17&&p.height<=.14&&p.depth<=.31;
-      o.visible=!smallPad;o.scale.multiplyScalar(.68);
-    }});
-    // The director solves its own arm IK against authored shot poses, so the
-    // avatar's standing rifle-carry pose has to stand aside for it.
-    actor.armPose=null;actor.handPose=null;
-    if(actor.gun)actor.gun.visible=false;
-    const initialAction=actionAt(spec,0,spec.action||(shot.combat?'Idle_Attack':(mover?'Walk':'Idle')));
-    if(!actor.actions[initialAction])throw new Error(`Director actor ${i}: missing clip ${initialAction}`);
-    actor.group.position.set(spec.p.x,groundY,spec.p.z);actor.group.rotation.y=spec.yaw||0;actor.play(initialAction);
-    if(!actor.current)throw new Error(`Director actor ${i}: inactive clip after preflight`);
-    attachDirectorWeapon(actor,spec.weapon||'m1911',!!spec.pap,!!spec.diamond);if(spec.papAfter){actor.papDirectorWeapon=makeDirectorWeapon(actor,spec.weapon||'m1911',true,!!spec.diamond);actor.papDirectorWeapon.anchor.visible=false;}
-    // Some shipped clips do not key every arm joint. Cache their authored
-    // starting quaternions so random seeks cannot inherit an earlier IK solve.
-    actor.directorArmRest={};
-    for(const [side,chain] of Object.entries(actor.armChains||{}))actor.directorArmRest[side]={upper:chain.upper.quaternion.clone(),lower:chain.lower.quaternion.clone(),root:chain.root?.quaternion.clone()||null};
-    scene.add(actor.group);actors.push({actor,spec,groundY,mover});
-  }
-  for(const [i,spec] of (shot.zombies||[]).entries()){
-    const groundY=map.floorY(spec.p.x,spec.p.z,spec.p.y),z=new ZombieVisual(i%2),mover=(spec.worldKeys||spec.path||spec.to)?new DirectorMover(spec,shot.duration,i+17):null;
-    z.group.position.set(spec.p.x,groundY,spec.p.z);z.group.rotation.y=spec.yaw||0;
-    // Calibration is destructive by design, so it must happen before—not after—
-    // the authored action is issued.
-    z.calibrate();
-    const initialAction=actionAt(spec,0,spec.action||'Idle');
-    if(!z.actions[initialAction])throw new Error(`Director zombie ${i}: missing clip ${initialAction}`);
-    z.play(initialAction,{loop:initialAction!=='Death'});
-    if(!z.current)throw new Error(`Director zombie ${i}: inactive clip after preflight`);
-    scene.add(z.group);zombies.push({z,spec,groundY,mover});
-  }
-  if(requestedShot==='squadFire'||requestedShot==='papRitual'){
-    const laneTargets=requestedShot==='papRitual'?[0,1,3]:[0,2,5,7];
-    actors.forEach(({spec},i)=>{
-      const positions=new Float32Array(6);
-      const color=spec.weapon==='raygun'?0xff6651:(spec.diamond||spec.pap?0x9fe7ff:0xffbd72);
-      const line=new THREE.Line(new THREE.BufferGeometry().setAttribute('position',new THREE.BufferAttribute(positions,3)),new THREE.LineBasicMaterial({color,transparent:true,opacity:.4,blending:THREE.AdditiveBlending,depthWrite:false}));
-      const impactCount=spec.weapon==='trench'?8:1,impacts=[];
-      for(let p=0;p<impactCount;p++){const impact=new THREE.Mesh(new THREE.SphereGeometry(spec.weapon==='raygun'?.07:.035,8,6),new THREE.MeshBasicMaterial({color,transparent:true,opacity:.72,blending:THREE.AdditiveBlending,depthWrite:false}));impact.visible=false;scene.add(impact);impacts.push(impact);}
-      line.visible=false;scene.add(line);combatTracers.push({line,impacts,weapon:spec.weapon,actorIndex:i,zombieIndex:laneTargets[i]});
-    });
-  }
-  if(shot.monkey){
-    monkeyProp=buildViewmodel('monkey',false);monkeyProp.scale.setScalar(.55);monkeyProp.visible=false;scene.add(monkeyProp);
-    const points=[v(-15.35,.6,-13.4),v(-14.9,2.3,-12.6),v(-14.45,.75,-11.7),v(-13.85,2.1,-12.8),v(-13.2,.7,-11.6),v(-12.65,2.4,-12.5)];
-    trapArc=new THREE.Line(new THREE.BufferGeometry().setFromPoints(points),new THREE.LineBasicMaterial({color:0xa8eaff,transparent:true,opacity:.95,blending:THREE.AdditiveBlending}));trapArc.visible=false;scene.add(trapArc);
-  }
-  if(shot.dg2Event){
-    chainArcs=new THREE.Group();
-    const remaining=zombies.map((_,i)=>i);let cursor=actors[0].actor.group.position;
-    while(remaining.length){remaining.sort((a,b)=>zombies[a].z.group.position.distanceTo(cursor)-zombies[b].z.group.position.distanceTo(cursor));const next=remaining.shift();dgOrder.push(next);cursor=zombies[next].z.group.position;}
-    for(let i=0;i<zombies.length;i++){
-      const parts=[];
-      for(let j=0;j<7;j++){
-        const halo=new THREE.Mesh(new THREE.CylinderGeometry(.035,.05,1,6),new THREE.MeshBasicMaterial({color:0x57bfff,transparent:true,opacity:.40,blending:THREE.AdditiveBlending,depthWrite:false,depthTest:false}));
-        const core=new THREE.Mesh(new THREE.CylinderGeometry(.012,.018,1,6),new THREE.MeshBasicMaterial({color:0xf5fcff,transparent:true,opacity:.94,blending:THREE.AdditiveBlending,depthWrite:false,depthTest:false}));
-        halo.frustumCulled=false;core.frustumCulled=false;halo.renderOrder=20;core.renderOrder=21;
-        parts.push({halo,core});
-      }
-      const impact=new THREE.Mesh(new THREE.SphereGeometry(.07,10,8),new THREE.MeshBasicMaterial({color:0xbcecff,transparent:true,opacity:.86,blending:THREE.AdditiveBlending,depthWrite:false,depthTest:false}));impact.frustumCulled=false;impact.renderOrder=22;
-      const segment=new THREE.Group();for(const p of parts)segment.add(p.halo,p.core);segment.add(impact);segment.userData={parts,impact};segment.visible=false;chainArcs.add(segment);
-    }
-    scene.add(chainArcs);
-  }
-  if(shot.dog){dog=createZombieModel(true,{directorRig:true});dog.position.copy(shot.dog);dog.rotation.y=-Math.PI/2;dog.userData.directorMover=shot.dogPath?new DirectorMover({p:shot.dog,path:shot.dogPath,entryFrame:shot.dogEntryFrame,exitFrame:shot.dogExitFrame,speedKeys:[[0,0],[14,.04],[124,.90],[142,.985],[149,1]],stride:1.65},shot.duration,91):null;scene.add(dog);}
-}
-
-function projectWitness(point){const ndc=point.clone().project(camera);return {ndc:ndc.toArray(),visible:ndc.z>=-1&&ndc.z<=1&&Math.abs(ndc.x)<=1&&Math.abs(ndc.y)<=1};}
-function objectScreenRect(object){
-  if(!object?.visible)return null;
-  const box=new THREE.Box3().setFromObject(object);if(box.isEmpty())return null;
-  const points=[];for(const x of [box.min.x,box.max.x])for(const y of [box.min.y,box.max.y])for(const z of [box.min.z,box.max.z])points.push(v(x,y,z).project(camera));
-  const xs=points.map(p=>p.x),ys=points.map(p=>p.y),minX=Math.max(-1,Math.min(...xs)),maxX=Math.min(1,Math.max(...xs)),minY=Math.max(-1,Math.min(...ys)),maxY=Math.min(1,Math.max(...ys));
-  if(minX>=maxX||minY>=maxY)return null;
-  return {minX,maxX,minY,maxY,area:(maxX-minX)*(maxY-minY)/4,width:(maxX-minX)/2,height:(maxY-minY)/2};
-}
-function rectOverlapRatio(a,b){if(!a||!b)return 0;const w=Math.max(0,Math.min(a.maxX,b.maxX)-Math.max(a.minX,b.minX)),h=Math.max(0,Math.min(a.maxY,b.maxY)-Math.max(a.minY,b.minY));return w*h/Math.max(1e-6,Math.min(a.area,b.area)*4);}
-function rectIntersectsCenter80(rect){return !!rect&&Math.min(rect.maxX,.8)>Math.max(rect.minX,-.8)&&Math.min(rect.maxY,.8)>Math.max(rect.minY,-.8);}
 
 function validate(camPos,look){
   const issues=[];
@@ -944,15 +615,12 @@ async function init(){
   // randomness, so restoring before buildCast made clean-page renders diverge.
   Math.random=mulberry32(seedForShot(shot.seedGroup||requestedShot));
   try{
-    await assets.load();map=buildMap(scene);
-    mapPracticalLamps=map.group.children.filter(o=>o.isPointLight);
+    await assets.load();buildWorld();
     applyState();
     for(let i=0;i<180;i++)map.update(1/FPS,!!shot.state.power);
     bindOpeningEnvironment();
     buildCast();
   }finally{Math.random=originalRandom;}
-  // Direct children are the shipped room practicals.  Keeping the references in
-  // this isolated runtime lets the power insert show an actual map lamp waking.
   ready=true;
   window.__TRAILER__.ready=true;
   seek(initialFrame);

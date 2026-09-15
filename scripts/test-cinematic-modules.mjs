@@ -11,7 +11,8 @@
 // - The modules that never touch the page load in Node. That links every
 //   import among them and builds every shot in the manifest. stage.js reads
 //   location, queries the DOM and creates a WebGLRenderer as it loads, so it
-//   and the modules that import it are left to cinematic.html.
+//   and the modules that import it are loaded by test-cinematic-director.mjs,
+//   which stubs the page.
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
