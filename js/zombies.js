@@ -1055,6 +1055,7 @@ export class ZombieManager {
     this.nextId = 1;
     this.round = 0;
     this.time = 0;
+    this.groanTimer = 0; // the first update() schedules the first ambient groan
     this.toSpawn = 0;
     this.spawnTimer = 0;
     this.spawnDelay = 2;
