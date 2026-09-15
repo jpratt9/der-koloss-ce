@@ -38,7 +38,7 @@ const specifiers = assertNoImportOf('zombies.js', 'zombies', files);
 // method for method.
 // ---------------------------------------------------------------------------
 const methodFiles = files.filter((f) => /^manager-[\w-]+\.js$/.test(f));
-assert.ok(methodFiles.length >= 2, `expected ZombieManager's method files in js/zombies/, found ${methodFiles.length}`);
+assert.ok(methodFiles.length >= 4, `expected ZombieManager's method files in js/zombies/, found ${methodFiles.length}`);
 const methodFile = await assertMethodFilesInstalled(entry.ZombieManager, 'zombies', methodFiles);
 
 // ---------------------------------------------------------------------------
