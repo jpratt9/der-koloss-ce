@@ -256,7 +256,8 @@ js/                 Game source (ES modules, no bundler)
   main.js             Menu, lobby, boot
   weapons.js          Weapons entry point: re-exports js/weapons/
   weapons/            The 31-weapon catalog, view-model builders, finishes, first-person rig
-  map.js              Factory layout and geometry
+  map.js              Map entry point: builds js/map/ in order, runs the map
+  map/                Map sections: surfaces, shell, stairs, doors, props, machines, lights, signage
   map-props.js        Procedural prop placement
   zombies.js          Zombies entry point: re-exports js/zombies/
   zombies/            Horde AI and spawning, corpse and hound bodies, hit volumes, poses
