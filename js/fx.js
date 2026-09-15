@@ -5,10 +5,13 @@
 // ParticlePool shader (per-particle size/rotation/colour ramps) rather than
 // the old PointsMaterial, which could only draw one fixed dot size.
 import * as THREE from 'three';
-import { clamp, installMixins, rand, textTexture } from './utils.js';
+import { clamp, installMixins, rand } from './utils.js';
 import { ParticlePool, puffTexture, sparkTexture, splatTexture } from './render/Particles.js';
 import { tracerTexture, holeTexture } from './fx/textures.js';
 import { BLOOD_DECAL_COLOR, IMPACTS } from './fx/surfaces.js';
+import { FxDecals } from './fx/decals.js';
+import { FxScreen } from './fx/screen.js';
+import { FxDrops } from './fx/drops.js';
 import { FxUpdate } from './fx/update.js';
 
 // js/map/hand-placed.js stamps the level's old blood with this, and imports it
@@ -474,140 +477,9 @@ export class FX {
     bl.dur = dur;
     bl.t = dur;
   }
-
-  // =========================================================================
-  // decals
-  // =========================================================================
-  _decal(x, y, z, nx, ny, nz, { tex = 'hole', color = 0x222222, size = 0.12, life = 20, rot = null, jitter = 0 } = {}) {
-    const d = this.decals[this.decalHead];
-    this.decalHead = (this.decalHead + 1) % this.decals.length;
-    const m = d.mesh;
-    // No needsUpdate: both maps are non-null, so swapping between them is a
-    // texture rebind, not a new shader. Flagging it made three re-resolve the
-    // decal's program on every bullet hole and blood splat.
-    m.material.map = tex === 'blood' ? d.bloodTex : d.holeTex;
-    m.material.color.setHex(color);
-    // Offset along the normal so the quad never z-fights the surface.
-    m.position.set(
-      x + nx * 0.012 + (jitter ? rand(-jitter, jitter) : 0),
-      y + ny * 0.012 + (jitter ? rand(-jitter * 0.02, jitter * 0.02) : 0),
-      z + nz * 0.012 + (jitter ? rand(-jitter, jitter) : 0),
-    );
-    this._v.set(nx, ny, nz);
-    this._q.setFromUnitVectors(this._decalFwd, this._v);
-    m.quaternion.copy(this._q);
-    m.rotateZ(rot ?? rand(Math.PI * 2));
-    m.scale.set(size, size, 1);
-    m.material.opacity = 0.92;
-    m.visible = true;
-    d.t = life;
-    d.dur = life;
-  }
-
-  // =========================================================================
-  // screen
-  // =========================================================================
-  shake(amount) { this.trauma = Math.min(1, this.trauma + amount); }
-
-  damageFlash(amount = 1) {
-    this.onDamageFlash?.(amount);
-    if (this.postActive) return;
-    if (this.vignette) {
-      this.vignette.style.opacity = '1';
-      clearTimeout(this._vt);
-      this._vt = setTimeout(() => { this.vignette.style.opacity = '0'; }, 180);
-    }
-  }
-
-  screenFlash(color = '#fff', ms = 120, opacity = 0.55) {
-    this.onScreenFlash?.(color, ms, opacity);
-    if (this.postActive) return;
-    if (!this.flashEl) return;
-    this.flashEl.style.background = color;
-    this.flashEl.style.opacity = String(opacity);
-    clearTimeout(this._ft);
-    this._ft = setTimeout(() => { this.flashEl.style.opacity = '0'; }, ms);
-  }
-
-  popup(x, y, z, text, color = '#ffd980') {
-    const p = this.popups[this.popupHead];
-    this.popupHead = (this.popupHead + 1) % this.popups.length;
-    p.sprite.material.map?.dispose();
-    p.sprite.material.map = textTexture(text, { w: 256, h: 64, bg: 'rgba(0,0,0,0)', fg: color, font: 'bold 44px Arial' });
-    p.sprite.material.needsUpdate = true;
-    p.sprite.position.set(x, y, z);
-    p.sprite.material.opacity = 1;
-    p.t = 0.9;
-    p.vy = 1.1;
-  }
-
-  clearTransientEffects() {
-    for (const pool of this.pools) pool.clear();
-    for (const t of this.tracers) { t.t = 0; t.mesh.visible = false; t.mesh.material.opacity = 0; }
-    for (const s of this.shells) { s.t = 0; s.mesh.visible = false; }
-    for (const b of this.bolts) { b.t = 0; b.line.visible = false; b.line.material.opacity = 0; }
-    for (const b of this.boomLights) { b.t = 0; b.light.intensity = 0; b.light.color.setHex(0xffa050); }
-    this.muzzleT = 0;
-    this.muzzleLight.intensity = 0;
-  }
-
-  // =========================================================================
-  // power-up drops
-  // =========================================================================
-  spawnDrop(type, x, z) {
-    const icons = { maxammo: 'MAX AMMO', insta: 'INSTA-KILL', double: '×2 POINTS', nuke: 'NUKE' };
-    const colors = { maxammo: '#8dff8d', insta: '#ff6a5a', double: '#ffd24a', nuke: '#c8b6ff' };
-    const g = new THREE.Group();
-    const core = new THREE.Mesh(
-      new THREE.OctahedronGeometry(0.22, 1),
-      new THREE.MeshStandardMaterial({
-        color: 0x0c2410, emissive: new THREE.Color(colors[type]),
-        emissiveIntensity: 2.4, roughness: 0.2, metalness: 0.4, toneMapped: false,
-      }),
-    );
-    core.position.y = 0.8;
-    // A halo shell makes the drop readable across the map through fog.
-    const halo = new THREE.Mesh(
-      new THREE.SphereGeometry(0.42, 14, 10),
-      new THREE.MeshBasicMaterial({
-        color: new THREE.Color(colors[type]), transparent: true, opacity: 0.1,
-        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.BackSide, toneMapped: false,
-      }),
-    );
-    halo.position.y = 0.8;
-    const light = new THREE.PointLight(new THREE.Color(colors[type]), 22, 7, 2);
-    light.position.y = 0.85;
-    light.layers.enableAll();
-    // Born hidden. The light pool adopts every point light in the scene and
-    // hides it, but it only rescans twice a second — so a drop spawning in
-    // between arrived VISIBLE, three counted one more point light than the
-    // shaders were compiled for, and every material in the map recompiled on
-    // that frame and again when the rescan hid it. Two full pipeline rebuilds
-    // for a light the pool was going to mirror anyway. It costs nothing to
-    // start hidden: the pool reads intensity and transform, not visibility.
-    light.visible = false;
-    const label = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: textTexture(icons[type], { w: 256, h: 56, bg: 'rgba(0,0,0,0)', fg: colors[type], font: 'bold 38px Arial', glow: colors[type] }),
-      transparent: true, toneMapped: false,
-    }));
-    label.scale.set(1.4, 0.32, 1);
-    label.position.y = 1.35;
-    g.add(core, halo, light, label);
-    g.position.set(x, 0, z);
-    this.scene.add(g);
-    const drop = { type, group: g, x, z, t: 25, core, halo, light };
-    this.drops.push(drop);
-    return drop;
-  }
-
-  removeDrop(drop) {
-    this.scene.remove(drop.group);
-    const i = this.drops.indexOf(drop);
-    if (i >= 0) this.drops.splice(i, 1);
-  }
 }
 
 // FX's methods are split by effect across js/fx/. Each file is a class whose
 // methods are copied onto FX.prototype here: one `this`, one set of pools for
 // every caller. A name defined twice is a split mistake, so it fails at load.
-installMixins(FX, [FxUpdate]);
+installMixins(FX, [FxDecals, FxScreen, FxDrops, FxUpdate]);
