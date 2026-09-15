@@ -1,6 +1,6 @@
 // ZombieManager's state machine: what each body does every frame on the host,
 // from clawing out of the floor to the dormant horde at game over.
-// Methods of ZombieManager: js/zombies.js copies them onto ZombieManager.prototype.
+// Methods of ZombieManager: js/zombies/manager.js copies them onto ZombieManager.prototype.
 import { CFG } from '../config.js';
 import { rand, dist2D, moveCircleWithColliders } from '../utils.js';
 import { NAV_RADIUS } from '../navmesh.js';

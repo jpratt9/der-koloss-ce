@@ -1,6 +1,6 @@
 // ZombieManager's replication: the snapshot the host sends, and how a guest
 // applies it and interpolates between snapshots.
-// Methods of ZombieManager: js/zombies.js copies them onto ZombieManager.prototype.
+// Methods of ZombieManager: js/zombies/manager.js copies them onto ZombieManager.prototype.
 import { clamp, lerp, rand } from '../utils.js';
 import { ZSTATES } from './states.js';
 import { createZombieModel, createZombieVisual, enforceEnemyVisualIdentity } from './models.js';

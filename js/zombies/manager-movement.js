@@ -1,6 +1,6 @@
 // ZombieManager's movement: the colliders that can stop a body, and the
 // collision-resolved step and crowd push that every body moves by.
-// Methods of ZombieManager: js/zombies.js copies them onto ZombieManager.prototype.
+// Methods of ZombieManager: js/zombies/manager.js copies them onto ZombieManager.prototype.
 import { moveCircleWithColliders } from '../utils.js';
 import { NAV_RADIUS } from '../navmesh.js';
 import { ZSTATES } from './states.js';

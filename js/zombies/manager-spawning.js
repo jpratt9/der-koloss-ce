@@ -1,7 +1,7 @@
 // ZombieManager's spawning: how big each wave is, where its bodies come in (a
 // boarded window first, the floor only now and then), and the rise spots that
 // also rescue a body wedged out of reach.
-// Methods of ZombieManager: js/zombies.js copies them onto ZombieManager.prototype.
+// Methods of ZombieManager: js/zombies/manager.js copies them onto ZombieManager.prototype.
 import { roundZombieCount, roundZombieHealth, roundSpawnDelay, nextDogRound, dogCount } from '../config.js';
 import { clamp, rand, choice, resolveCircleBox } from '../utils.js';
 import { elevationAwareRiseCandidate, roomDepthsToPlayers } from '../map-layout.js';
