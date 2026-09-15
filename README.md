@@ -251,7 +251,8 @@ Voice peers are authorised independently of media: a peer must be authenticated,
 ```
 index.html          Menu, game shell, import map
 js/                 Game source (ES modules, no bundler)
-  game.js             Engine: rounds, economy, interactions
+  game.js             Engine core: setup, frame loop, exit
+  game/               Engine by domain: combat, rounds, interactions, box, Pack-a-Punch, co-op
   main.js             Menu, lobby, boot
   weapons.js          The 31-weapon catalog
   map.js              Factory layout and geometry
