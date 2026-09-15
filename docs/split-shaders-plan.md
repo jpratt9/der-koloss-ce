@@ -39,6 +39,10 @@ This doc's §2 replaces the main plan's ranking of the other files.
 - **The new checks were tried against mistakes** before step 1 was committed, and each failed as it should: the entry spelling common.js with a capital C, common.js importing the entry, and a backtick in a comment in common.js.
 - **The validators number 54 in the loop:** the 53 from before, plus test-shader-modules.mjs. All of them passed before step 1 and after every step.
 - **Browser checks.** The step 3 check hasn't been run. It needs a local server.
+- **The standing check from §1.7 was added after the split,** in scripts/test-shader-modules.mjs.
+  - Every pass but `FXAA_FRAG` must start with `COMMON` exactly once, and `FXAA_FRAG` must not use it.
+  - It also runs on a doctored set, with a pass that joins `COMMON` twice, an `FXAA_FRAG` that joins it and an `SSR_FRAG` without it, and must reject all three.
+  - It fails when dof.js loses its `COMMON +`. The validator count stays 54.
 
 None of the dead code in §1.9 was touched. The header sentences in §1.10 are done. The optional comment fix in §1.10 was not made.
 
