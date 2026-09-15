@@ -23,9 +23,10 @@ npm-debug.log*
 cinematic.html
 js/cinematic-director.js
 
-# Local regression tooling and agent instructions
+# Local regression tooling, agent instructions and internal documentation
 scripts
 AGENTS.md
+docs
 
 # Local operating-system metadata
 .DS_Store
