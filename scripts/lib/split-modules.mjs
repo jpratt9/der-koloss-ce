@@ -1,6 +1,7 @@
 // Contract checks shared by the tests of the files split into folders:
-// test-game-modules.mjs (js/game/), test-weapon-modules.mjs (js/weapons/) and
-// test-zombie-modules.mjs (js/zombies/). Every path here is relative to js/.
+// test-game-modules.mjs (js/game/), test-weapon-modules.mjs (js/weapons/),
+// test-zombie-modules.mjs (js/zombies/) and test-cinematic-modules.mjs
+// (js/cinematic-director/). Every path here is relative to js/.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';

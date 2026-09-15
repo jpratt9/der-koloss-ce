@@ -22,6 +22,7 @@ npm-debug.log*
 # Internal trailer capture/debug surface (not part of the player experience)
 cinematic.html
 js/cinematic-director.js
+js/cinematic-director/
 
 # Local regression tooling, agent instructions and internal documentation
 scripts
