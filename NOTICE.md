@@ -52,7 +52,7 @@ This track is **not** covered by the MIT license, is **not** licensed to this pr
 
 It is referenced in exactly two places:
 
-- `js/audio.js` — playback
+- `js/audio/engine-music.js` — playback
 - `js/assets-page.js` — the asset archive listing
 
 ## Trademarks
