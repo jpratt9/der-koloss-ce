@@ -3,12 +3,12 @@
 // nothing throws, the game just quietly shows the wrong thing to somebody.
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
-import { readGameSource } from './lib/game-source.mjs';
+import { readGameSource, readZombiesSource } from './lib/game-source.mjs';
 
 const player = readFileSync(new URL('../js/player.js', import.meta.url), 'utf8');
 const gear = readFileSync(new URL('../js/render/SoldierGear.js', import.meta.url), 'utf8');
 const face = readFileSync(new URL('../js/render/SoldierFace.js', import.meta.url), 'utf8');
-const zombies = readFileSync(new URL('../js/zombies.js', import.meta.url), 'utf8');
+const zombies = readZombiesSource();
 const game = readGameSource();
 const net = readFileSync(new URL('../js/net.js', import.meta.url), 'utf8');
 

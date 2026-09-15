@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { readGameSource, readWeaponsSource } from './lib/game-source.mjs';
+import { readGameSource, readWeaponsSource, readZombiesSource } from './lib/game-source.mjs';
 import {
   chainArcTargetAllowed,
   dogHitZones,
@@ -153,7 +153,7 @@ assert.match(game, /dogHitZones\(zombie, \{ interpolationAllowance: 0\.16 \}\)/)
 assert.match(game, /shouldSpawnDogRoundReward\([\s\S]{0,500}spawnDrop\('maxammo', z\.x, z\.z\)/);
 assert.doesNotMatch(game, /guaranteed max ammo after dog round/);
 
-const zombies = fs.readFileSync(new URL('../js/zombies.js', import.meta.url), 'utf8');
+const zombies = readZombiesSource();
 assert.match(zombies, /m\.rotation\.y = z\.yaw - \(z\.dog \? Math\.PI \/ 2 : 0\)/,
   'rendered hound forward axis must match its navigation and hit zones');
 

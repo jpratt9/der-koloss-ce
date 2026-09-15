@@ -2,8 +2,8 @@
 // exception. This regressed once already, silently, because a leaked barrier
 // claim degraded every wave into floor spawns without any error.
 import assert from 'node:assert';
-import { readFileSync } from 'node:fs';
-const src = readFileSync(new URL('../js/zombies.js', import.meta.url), 'utf8');
+import { readZombiesSource } from './lib/game-source.mjs';
+const src = readZombiesSource();
 
 // Ground risers must be budgeted per wave, not used as a fallback.
 assert.match(src, /const RISER_SHARE = 0\.0[0-9]/, 'RISER_SHARE must stay a small share of the wave');

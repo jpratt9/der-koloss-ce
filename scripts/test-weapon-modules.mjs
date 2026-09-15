@@ -10,10 +10,11 @@
 // - Every WeaponRig method in js/weapons/rig-*.js is on WeaponRig.prototype.
 // - readWeaponsSource() hands the text checks every weapons file.
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { loadGameModule, repoRoot } from './lib/headless-three.mjs';
 import { readWeaponsSource } from './lib/game-source.mjs';
+import { assertMethodFilesInstalled, assertNoImportOf, assertSourceHolds } from './lib/split-modules.mjs';
 
 const weaponsDir = join(repoRoot, 'js', 'weapons');
 const files = readdirSync(weaponsDir, { recursive: true }).filter((f) => f.endsWith('.js')).sort();
@@ -31,17 +32,7 @@ assert.deepEqual(Object.keys(entry).sort(), [
 // ---------------------------------------------------------------------------
 // No module in js/weapons/ imports js/weapons.js.
 // ---------------------------------------------------------------------------
-const entryPath = join(repoRoot, 'js', 'weapons.js');
-let specifiers = 0;
-for (const file of files) {
-  const path = join(weaponsDir, file);
-  for (const [, spec] of readFileSync(path, 'utf8').matchAll(/^\s*(?:import|export)\b[^'"]*?\bfrom\s*'([^']+)'/gm)) {
-    if (!spec.startsWith('.')) continue;
-    specifiers++;
-    assert.notEqual(resolve(dirname(path), spec.replace(/\?.*$/, '')), entryPath,
-      `js/weapons/${file} imports js/weapons.js: import from the module that defines the name instead`);
-  }
-}
+const specifiers = assertNoImportOf('weapons.js', 'weapons', files);
 
 // ---------------------------------------------------------------------------
 // Every weapon has exactly one view-model builder. buildViewmodel() merges the
@@ -69,28 +60,12 @@ assert.deepEqual([...builderFile.keys()].sort(), Object.keys(entry.WEAPONS).sort
 // ---------------------------------------------------------------------------
 const rigFiles = files.filter((f) => /^rig-[\w-]+\.js$/.test(f));
 assert.ok(rigFiles.length >= 3, `expected WeaponRig's method files in js/weapons/, found ${rigFiles.length}`);
-const rigMethodFile = new Map();
-for (const file of rigFiles) {
-  const classes = Object.values(await loadGameModule('weapons', file))
-    .filter((v) => typeof v === 'function' && Function.prototype.toString.call(v).startsWith('class '));
-  assert.equal(classes.length, 1, `js/weapons/${file} must export exactly one class of WeaponRig methods`);
-  const names = Object.getOwnPropertyNames(classes[0].prototype).filter((n) => n !== 'constructor');
-  assert.ok(names.length, `js/weapons/${file} holds no methods`);
-  for (const name of names) {
-    assert.equal(rigMethodFile.has(name), false, `WeaponRig.${name} is defined in both ${rigMethodFile.get(name)} and ${file}`);
-    rigMethodFile.set(name, file);
-    assert.equal(entry.WeaponRig.prototype[name], classes[0].prototype[name],
-      `WeaponRig.${name} from js/weapons/${file} is not installed on WeaponRig.prototype`);
-  }
-}
+const rigMethodFile = await assertMethodFilesInstalled(entry.WeaponRig, 'weapons', rigFiles);
 
 // ---------------------------------------------------------------------------
 // readWeaponsSource() holds every weapons file.
 // ---------------------------------------------------------------------------
-const source = readWeaponsSource();
-for (const file of ['weapons.js', ...files.map((f) => `weapons/${f}`)]) {
-  assert.ok(source.includes(readFileSync(join(repoRoot, 'js', file), 'utf8')), `readWeaponsSource() is missing js/${file}`);
-}
+assertSourceHolds(readWeaponsSource(), 'readWeaponsSource()', ['weapons.js', ...files.map((f) => `weapons/${f}`)]);
 
 console.log(`Weapon modules OK: js/weapons.js exports ${Object.keys(entry).length} names; `
   + `${files.length} modules in js/weapons/ (${specifiers} relative imports) never import it; `

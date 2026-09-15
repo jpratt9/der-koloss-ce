@@ -14,12 +14,9 @@
 // These are code-shape checks, deliberately: the failure mode is structural,
 // and a render/timing test could not run deterministically in CI.
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
+import { readZombiesSource } from './lib/game-source.mjs';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const zombies = await readFile(path.join(root, 'js/zombies.js'), 'utf8');
+const zombies = readZombiesSource();
 
 // ---------------------------------------------------------------- the contract
 assert.match(zombies, /const ZOMBIE_MIN_H = 1\.\d+;/, 'a minimum rendered zombie height must be declared');

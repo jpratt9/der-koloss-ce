@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { readGameSource } from './lib/game-source.mjs';
+import { readGameSource, readZombiesSource } from './lib/game-source.mjs';
 import {
   explosionDamage,
   FRAG_BLAST,
@@ -50,7 +49,7 @@ for (const round of [5, 10, 30]) {
 
 const [game, zombies] = await Promise.all([
   readGameSource(),
-  readFile(new URL('../js/zombies.js', import.meta.url), 'utf8'),
+  readZombiesSource(),
 ]);
 assert.match(game, /ids\.push\(\[zb\.id, dmg, this\._newHitClaim\(\)\]\)/,
   'guest grenade victims need single-use credit ids');

@@ -11,11 +11,12 @@
 // - _mountViewmodel places the viewmodel lens the way the ADS solve expects,
 //   and _installAudioOcclusion muffles sound through walls and props.
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { THREE, loadGameModule, repoRoot } from './lib/headless-three.mjs';
 import './lib/headless-map.mjs';
 import { readGameSource } from './lib/game-source.mjs';
+import { assertMethodFilesInstalled, assertSourceHolds } from './lib/split-modules.mjs';
 
 const { Game } = await loadGameModule('game.js');
 const { audio } = await loadGameModule('audio.js');
@@ -26,24 +27,8 @@ const source = readGameSource();
 // ---------------------------------------------------------------------------
 const files = readdirSync(join(repoRoot, 'js', 'game')).filter((f) => f.endsWith('.js')).sort();
 assert.ok(files.length >= 16, `expected Game's domain files in js/game/, found ${files.length}`);
-const ownerOf = new Map();
-for (const file of files) {
-  const classes = Object.values(await loadGameModule('game', file))
-    .filter((v) => typeof v === 'function' && Function.prototype.toString.call(v).startsWith('class '));
-  assert.equal(classes.length, 1, `js/game/${file} must export exactly one class of Game methods`);
-  const names = Object.getOwnPropertyNames(classes[0].prototype).filter((n) => n !== 'constructor');
-  assert.ok(names.length, `js/game/${file} holds no methods`);
-  for (const name of names) {
-    assert.equal(ownerOf.has(name), false, `Game.${name} is defined in both ${ownerOf.get(name)} and ${file}`);
-    ownerOf.set(name, file);
-    assert.equal(Game.prototype[name], classes[0].prototype[name],
-      `Game.${name} from js/game/${file} is not installed on Game.prototype — is the class in game.js's list?`);
-  }
-}
-
-for (const file of ['game.js', ...files.map((f) => `game/${f}`)]) {
-  assert.ok(source.includes(readFileSync(join(repoRoot, 'js', file), 'utf8')), `readGameSource() is missing js/${file}`);
-}
+const ownerOf = await assertMethodFilesInstalled(Game, 'game', files);
+assertSourceHolds(source, 'readGameSource()', ['game.js', ...files.map((f) => `game/${f}`)]);
 
 // ---------------------------------------------------------------------------
 // onNetEvent offers every message to every domain handler; each handler acts

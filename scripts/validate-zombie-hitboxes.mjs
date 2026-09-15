@@ -13,11 +13,10 @@
 // clip a live zombie plays, and fires the real Game.zombieHitTest at the
 // skinned vertices themselves — from the front, the side and behind.
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { THREE, loadGameModule, repoRoot } from './lib/headless-three.mjs';
+import { THREE, loadGameModule } from './lib/headless-three.mjs';
 import { seedRandom } from './lib/headless-map.mjs';
 import { loadZombieModels } from './lib/headless-zombies.mjs';
+import { readZombiesSource } from './lib/game-source.mjs';
 
 seedRandom(0x2b7e1516);
 await loadZombieModels();
@@ -330,7 +329,7 @@ assert.equal(rayHitZombieBody({ dog: true, model: new THREE.Group() }, eyeAt(0, 
 
 // ---- the per-ray path allocates nothing ------------------------------------
 {
-  const zombies = await readFile(join(repoRoot, 'js/zombies.js'), 'utf8');
+  const zombies = readZombiesSource();
   for (const name of ['export function rayHitZombieBody(', 'function refreshHitPose(', 'function rayCrossesBounds(', 'function rayHullEntry(']) {
     const start = zombies.indexOf(name);
     assert.ok(start > -1, `${name} must exist`);
