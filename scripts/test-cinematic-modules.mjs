@@ -5,6 +5,9 @@
 //
 // - No module in js/cinematic-director/ imports js/cinematic-director.js. One
 //   that did would put an import cycle through the page's entry point.
+// - The modules in js/cinematic-director/ don't import each other in a cycle.
+//   validate() takes frame and proofFrame as parameters so that validate.js
+//   needn't import playback.js, which imports it.
 // - .vercelignore keeps the page, its entry point and the folder off the
 //   deploy. The director is internal trailer-capture tooling, and a new module
 //   in the folder would ship without the folder line.
@@ -27,6 +30,40 @@ const files = readdirSync(join(repoRoot, 'js', 'cinematic-director'), { recursiv
 const specifiers = assertNoImportOf('cinematic-director.js', 'cinematic-director', files);
 
 // ---------------------------------------------------------------------------
+// The modules in js/cinematic-director/ don't import each other in a cycle.
+// ---------------------------------------------------------------------------
+/** The files in js/cinematic-director/ that `file` imports. */
+const siblingsOf = (file) => [...readFileSync(join(repoRoot, 'js', 'cinematic-director', file), 'utf8')
+  .matchAll(/^\s*(?:import|export)\b[^'"]*?\bfrom\s*'\.\/([^']+)'/gm)].map(([, name]) => name);
+
+/** One import cycle in `graph` (each file to the files it imports), as the files around it, or null. */
+function findCycle(graph) {
+  const done = new Set(), path = [];
+  const visit = (file) => {
+    if (path.includes(file)) return [...path.slice(path.indexOf(file)), file];
+    if (done.has(file)) return null;
+    path.push(file);
+    for (const next of graph.get(file) ?? []) {
+      const cycle = visit(next);
+      if (cycle) return cycle;
+    }
+    path.pop();
+    done.add(file);
+    return null;
+  };
+  for (const file of graph.keys()) {
+    const cycle = visit(file);
+    if (cycle) return cycle;
+  }
+  return null;
+}
+const graph = new Map(files.map((file) => [file, siblingsOf(file)]));
+assert.equal(findCycle(graph)?.join(' imports ') ?? null, null, 'the modules in js/cinematic-director/ must not import each other in a cycle');
+const doctored = findCycle(new Map([...graph, ['validate.js', [...graph.get('validate.js'), 'playback.js']]]));
+assert.ok(doctored?.includes('validate.js') && doctored.includes('playback.js'),
+  'a validate.js that imports playback.js, which imports it, must be rejected');
+
+// ---------------------------------------------------------------------------
 // .vercelignore keeps the director off the deploy.
 // ---------------------------------------------------------------------------
 const ignored = new Set(readFileSync(join(repoRoot, '.vercelignore'), 'utf8').split('\n').map((l) => l.trim()));
@@ -46,5 +83,6 @@ const { SHOTS } = await loadGameModule('cinematic-director', 'shots.js');
 assert.ok(Object.keys(SHOTS).length, 'js/cinematic-director/shots.js must build the shot manifest');
 
 console.log(`Cinematic director modules OK: ${files.length} modules in js/cinematic-director/ (${specifiers} relative imports) never import `
-  + `js/cinematic-director.js; .vercelignore keeps the director off the deploy; ${PAGE_FREE.length} page-free modules load and build `
+  + 'js/cinematic-director.js, and never each other in a cycle (a validate.js that imports playback.js is rejected); '
+  + `.vercelignore keeps the director off the deploy; ${PAGE_FREE.length} page-free modules load and build `
   + `${Object.keys(SHOTS).length} shots.`);
