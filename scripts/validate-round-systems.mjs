@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import { readGameSource } from './lib/game-source.mjs';
+import { readGameSource, readNetSource } from './lib/game-source.mjs';
 import {
   createConcurrencyGate,
   MIN_BOX_WEAPON_RESULTS_BEFORE_TEDDY,
@@ -34,7 +33,7 @@ assert.match(game, /case 'intermission':[\s\S]{0,300}if \(this\.player\.dead\) t
 assert.match(game, /case 'respawn':[\s\S]{0,500}if \(this\.isAuthority\) this\.netSend\(msg\)/,
   'host must relay a client respawn so every peer clears the dead state');
 
-const net = fs.readFileSync(new URL('../js/net.js', import.meta.url), 'utf8');
+const net = readNetSource();
 assert.match(net, /HOST_ONLY_EVENTS[\s\S]{0,500}'intermission'/);
 
 console.log('Round systems OK: Teddy floor, dog voice cap, and intermission respawn validated.');

@@ -3,7 +3,7 @@
 // Two data channels per peer: reliable (events) + unreliable/unordered (snapshots).
 // Also owns voice chat end-to-end (streams, analysers, mute state) so both the
 // lobby UI and the in-game HUD can read speaking state.
-import { genCode } from './utils.js';
+import { genCode, installMixins } from './utils.js';
 import { audio } from './audio.js';
 import {
   availableLobbyColor,
@@ -17,14 +17,12 @@ import {
   stableClientReplacement,
   stalePeerIds,
 } from './multiplayer-contracts.js';
+import { PREFIX, MAX_PLAYERS, cleanName, cleanPersona, cleanClientId, clientIdentity } from './net/identity.js';
+import { NetLobby } from './net/lobby.js';
 
-const PREFIX = 'der-koloss-z-';
-const MAX_PLAYERS = 4;
 const HEARTBEAT_INTERVAL_MS = 5000;
 const PEER_TIMEOUT_MS = 20000;
 const PEER_SWEEP_INTERVAL_MS = 5000;
-const CLIENT_ID_KEY = 'der-koloss-client-id';
-const PERSONAS = new Set(['dempsey', 'nikolai', 'takeo', 'richtofen']);
 const CLIENT_EVENTS = new Set([
   'bark', 'barrier_req', 'box_spin_req', 'box_take', 'dead', 'door_req', 'down',
   'drop_take', 'grenade', 'hello', 'monkey', 'name', 'pap_req', 'pap_take',
@@ -57,38 +55,6 @@ const EVENT_MIN_MS = {
 // still reads as continuous automatic fire but keeps three guests firing an
 // FG42 well inside the reliable-channel cap.
 const SHOT_RELAY_MIN_MS = 55;
-
-function cleanName(value) {
-  return String(value || 'Player')
-    .replace(/[\u0000-\u001f\u007f]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 14) || 'Player';
-}
-
-function cleanPersona(value) {
-  return PERSONAS.has(value) ? value : 'dempsey';
-}
-
-function cleanClientId(value) {
-  const id = String(value || '').trim();
-  return /^[A-Za-z0-9_-]{16,80}$/.test(id) ? id : null;
-}
-
-function clientIdentity() {
-  try {
-    const saved = cleanClientId(globalThis.localStorage?.getItem(CLIENT_ID_KEY));
-    if (saved) return saved;
-  } catch (e) {}
-  let id = null;
-  try { id = cleanClientId(globalThis.crypto?.randomUUID?.()); } catch (e) {}
-  if (!id) {
-    const random = Math.random().toString(36).slice(2);
-    id = `client-${Date.now().toString(36)}-${random.padEnd(12, '0').slice(0, 12)}`;
-  }
-  try { globalThis.localStorage?.setItem(CLIENT_ID_KEY, id); } catch (e) {}
-  return id;
-}
 
 export class Net {
   constructor() {
@@ -405,83 +371,6 @@ export class Net {
   _startHeartbeat() {
     clearInterval(this._heartbeatTimer);
     this._heartbeatTimer = setInterval(() => this.sendRel({ t: 'heartbeat' }), HEARTBEAT_INTERVAL_MS);
-  }
-
-  _broadcastLobby() {
-    const payload = {
-      t: 'lobby', players: this.lobbyPlayers, code: this.code,
-      cheats: this.lobbyCheats, voiceEnabled: this.lobbyVoiceEnabled,
-    };
-    this._broadcastRel(payload);
-    this.syncVoiceCalls();
-    this.onLobby?.(this.lobbyPlayers, this.code);
-  }
-
-  setLobbyCheats(settings) {
-    if (!this.isHost) return;
-    // Keep the lobby payload data-only and detached from the menu's mutable
-    // object. Guests receive this snapshot for a truthful read-only preview.
-    try { this.lobbyCheats = JSON.parse(JSON.stringify(settings || {})); }
-    catch (e) { this.lobbyCheats = {}; }
-    this._broadcastLobby();
-  }
-
-  setLobbyVoiceEnabled(enabled) {
-    if (!this.isHost) return false;
-    this.lobbyVoiceEnabled = enabled === true;
-    if (!this.lobbyVoiceEnabled) this.disableVoice();
-    else this.voiceFailed = false;
-    this._broadcastLobby();
-    return this.lobbyVoiceEnabled;
-  }
-
-  resetLobbyReady() {
-    this.matchActive = false;
-    for (const player of this.lobbyPlayers) player.ready = false;
-    if (this.isHost) this._broadcastLobby();
-  }
-
-  setPersona(persona) {
-    persona = cleanPersona(persona);
-    this.myPersona = persona;
-    const me = this.lobbyPlayers.find((l) => l.id === this.myId);
-    if (me) me.persona = persona;
-    if (this.isHost) this._broadcastLobby();
-    else this.sendRel({ t: 'persona', persona });
-  }
-
-  setName(name) {
-    const n = cleanName(name);
-    const me = this.lobbyPlayers.find((l) => l.id === this.myId);
-    if (me) me.name = n;
-    if (this.isHost) this._broadcastLobby();
-    else this.sendRel({ t: 'name', name: n });
-  }
-
-  setReady(ready) {
-    if (this.isHost) {
-      const me = this.lobbyPlayers.find((l) => l.id === this.myId);
-      if (me) me.ready = ready;
-      this._broadcastLobby();
-    } else {
-      this.sendRel({ t: 'ready', ready });
-      const me = this.lobbyPlayers.find((l) => l.id === this.myId);
-      if (me) me.ready = ready;
-      this.onLobby?.(this.lobbyPlayers, this.code);
-    }
-  }
-
-  majorityReady() {
-    const n = this.lobbyPlayers.length;
-    const r = this.lobbyPlayers.filter((p) => p.ready).length;
-    return r >= Math.floor(n / 2) + 1;
-  }
-
-  startGame(payload) {
-    this.matchActive = true;
-    const msg = { t: 'start', ...payload, players: this.lobbyPlayers };
-    this._broadcastRel(msg);
-    this.onStart?.(msg);
   }
 
   // ---------------- joining ----------------
@@ -872,3 +761,8 @@ export class Net {
     this.onClosed = null;
   }
 }
+
+// Net's methods are split by side across js/net/. Each file is a class whose
+// methods are copied onto Net.prototype here: one `this`, one connection to
+// every caller. A name defined twice is a split mistake, so it fails at load.
+installMixins(Net, [NetLobby]);

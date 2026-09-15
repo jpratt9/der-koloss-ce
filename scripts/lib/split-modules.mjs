@@ -5,10 +5,11 @@
 // test-map-modules.mjs (js/map/), test-audio-modules.mjs (js/audio/),
 // test-main-modules.mjs (js/main/), test-shader-modules.mjs
 // (js/render/shaders/), test-hellhound-modules.mjs
-// (js/render/HellhoundModel/), test-map-props-modules.mjs (js/map-props/) and
-// test-map-layout-modules.mjs (js/map-layout/). The builder-call check serves
-// the entries that call their modules' builders, and the case check the folders
-// whose imports must match the spelling on disk.
+// (js/render/HellhoundModel/), test-map-props-modules.mjs (js/map-props/),
+// test-map-layout-modules.mjs (js/map-layout/) and test-net-modules.mjs
+// (js/net/). The builder-call check serves the entries that call their modules'
+// builders, and the case check the folders whose imports must match the
+// spelling on disk.
 // Every path here is relative to js/, except the file paths importsOf() and
 // onDisk() take.
 import assert from 'node:assert/strict';

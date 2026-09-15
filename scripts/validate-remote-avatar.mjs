@@ -3,14 +3,14 @@
 // nothing throws, the game just quietly shows the wrong thing to somebody.
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
-import { readGameSource, readPlayerSource, readZombiesSource } from './lib/game-source.mjs';
+import { readGameSource, readNetSource, readPlayerSource, readZombiesSource } from './lib/game-source.mjs';
 
 const player = readPlayerSource();
 const gear = readFileSync(new URL('../js/render/SoldierGear.js', import.meta.url), 'utf8');
 const face = readFileSync(new URL('../js/render/SoldierFace.js', import.meta.url), 'utf8');
 const zombies = readZombiesSource();
 const game = readGameSource();
-const net = readFileSync(new URL('../js/net.js', import.meta.url), 'utf8');
+const net = readNetSource();
 
 // ---------------------------------------------------------------------------
 // 0. THE HORDE KEEPS ITS SCREAM.
