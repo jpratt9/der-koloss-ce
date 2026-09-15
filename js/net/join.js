@@ -23,8 +23,10 @@ export class NetJoin {
       this._intentionalLeave = false;
       this._closedHandled = false;
       const peer = new Peer({ debug: 0 });
+      let peerOpen = false;
       const kill = setTimeout(() => { peer.destroy(); reject(new Error('Connection timed out. Check the code and try again.')); }, 12000);
       peer.on('open', () => {
+        peerOpen = true;
         this.peer = peer;
         this.isHost = false;
         this.mode = 'client';
@@ -62,7 +64,12 @@ export class NetJoin {
           }
         });
       });
-      peer.on('error', (e) => { clearTimeout(kill); reject(new Error('Could not connect: ' + e.type)); });
+      // Only for failing to reach the signalling server at all. PeerJS reports a
+      // lobby code nobody is hosting as a `peer-unavailable` error on the peer,
+      // AFTER its socket is open, and listeners run in the order they were
+      // added — so this one used to answer first and reject with its own
+      // message, and "Lobby not found. Check the code." never reached anyone.
+      peer.on('error', (e) => { if (peerOpen) return; clearTimeout(kill); reject(new Error('Could not connect: ' + e.type)); });
     });
   }
 

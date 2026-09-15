@@ -266,6 +266,13 @@ assert.match(netSource, /setInterval\(\(\) => this\.sendRel\(\{ t: 'heartbeat' \
 assert.match(netSource, /peerConnectionIsCurrent\(this\.peers, conn\.peer, p, ch, conn\)/);
 assert.match(netSource, /if \(!p && this\.matchActive\)[\s\S]{0,240}Match in progress/, 'mid-match reconnects must not create lobby ghosts without game-state resync');
 assert.match(netSource, /resetLobbyReady\(\) \{\s*this\.matchActive = false;/);
+// A lobby code nobody is hosting arrives as a peer-unavailable error on the peer,
+// after its socket is open. The outer handler must stand down by then, or it
+// answers first and the guest is told the connection failed instead.
+assert.match(netSource, /peer\.on\('error', \(e\) => \{ if \(peerOpen\) return;/,
+  'once the peer is open, the error handler inside it owns the failure');
+assert.match(netSource, /'Lobby not found\. Check the code\.'/,
+  'a code with no lobby must say so');
 assert.match(mainSource, /setLobbyVoiceEnabled\(options\.voiceChat !== false\)/);
 assert.match(mainSource, /destination === 'lobby' \? returnToLobby\(message\) : exitToMenu\(\)/);
 assert.match(mainSource, /canvas\?\.classList\.toggle\('hidden', !showCanvas\)/);
