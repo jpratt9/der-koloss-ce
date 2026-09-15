@@ -67,8 +67,11 @@ export class AudioEngineMusic {
       }
       state.timer = setTimeout(schedule, mo.len * beat * 1000);
     };
-    schedule();
+    // Register before the first schedule(): it stops as soon as the id is not in
+    // _loops, which is how stopAllJingles ends the motif. The other way round,
+    // the first call returned at once, so a jingle with no file never played.
     this._loops.set(id, state);
+    schedule();
   }
   setJingleProximity(id, dist, pan = 0) {
     const l = this._loops.get(id); if (!l) return;

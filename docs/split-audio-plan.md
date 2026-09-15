@@ -33,6 +33,9 @@ This doc's §2 replaces the map plan's ranking of the other files.
   - So "a token dropped or changed would load a second copy" applies to the modules in js/audio/ with more than one importer: ir.js, zones.js and casings.js.
 - **The validators number 50 in the loop:** the 49 from before, plus test-audio-modules.mjs. All of them passed before step 1 and after every step.
 - **Browser checks.** None of the checks in §1.8 have been run. They need a local server.
+- **The standing check from §1.7 was added after the split,** as scripts/test-audio-engine.mjs. That makes 51 validators.
+  - Its first run found a bug from the initial release: a perk jingle with no file never played. `startJingle` called `schedule()` before it registered the loop, and `schedule()` returns early when the loop isn't registered.
+  - The fix registers the loop first.
 
 None of the dead code in §1.9 was touched. NOTICE.md's line and README.md's layout lines from §1.10 are done. The optional comment updates in §1.10 were not made.
 
