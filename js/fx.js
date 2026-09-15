@@ -521,9 +521,11 @@ export class FX {
     const d = this.decals[this.decalHead];
     this.decalHead = (this.decalHead + 1) % this.decals.length;
     const m = d.mesh;
+    // No needsUpdate: both maps are non-null, so swapping between them is a
+    // texture rebind, not a new shader. Flagging it made three re-resolve the
+    // decal's program on every bullet hole and blood splat.
     m.material.map = tex === 'blood' ? d.bloodTex : d.holeTex;
     m.material.color.setHex(color);
-    m.material.needsUpdate = true;
     // Offset along the normal so the quad never z-fights the surface.
     m.position.set(
       x + nx * 0.012 + (jitter ? rand(-jitter, jitter) : 0),

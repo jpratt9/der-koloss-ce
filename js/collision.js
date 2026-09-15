@@ -90,18 +90,29 @@ export function moveCircleWithColliders(x, z, dx, dz, r, colliders, maxStep = Ma
 }
 
 // Segment vs AABB (2D) — used for bullet raycasts against walls.
+//
+// One slab per axis, clipping a shared [tmin, tmax] window. This used to loop
+// over `[[origin, delta, min, max], ...]` tuples and swap with a destructured
+// array, which is three throwaway arrays per collider per call — and every
+// pellet, every interaction line-of-sight check and every audio occlusion
+// probe runs it against all ~310 colliders. That was ~37 KB of garbage per
+// sight line, several of them a frame near a prompt, more per pellet — and the
+// player feels the collections as hitches.
+//
+// The window lives in a typed array, not two module-level lets: a fractional
+// double written to a module variable is boxed on every write.
+const _window = new Float64Array(2);   // [tmin, tmax]
+function clipSlab(o, d, mn, mx) {
+  if (Math.abs(d) < 1e-9) return !(o < mn || o > mx);
+  let t1 = (mn - o) / d, t2 = (mx - o) / d;
+  if (t1 > t2) { const t = t1; t1 = t2; t2 = t; }
+  const w = _window;
+  w[0] = Math.max(w[0], t1); w[1] = Math.min(w[1], t2);
+  return !(w[0] > w[1]);
+}
 export function segmentHitsBox(x0, z0, x1, z1, b) {
-  let tmin = 0, tmax = 1;
-  const dx = x1 - x0, dz = z1 - z0;
-  const axes = [[x0, dx, b.minX, b.maxX], [z0, dz, b.minZ, b.maxZ]];
-  for (const [o, d, mn, mx] of axes) {
-    if (Math.abs(d) < 1e-9) { if (o < mn || o > mx) return -1; }
-    else {
-      let t1 = (mn - o) / d, t2 = (mx - o) / d;
-      if (t1 > t2) [t1, t2] = [t2, t1];
-      tmin = Math.max(tmin, t1); tmax = Math.min(tmax, t2);
-      if (tmin > tmax) return -1;
-    }
-  }
-  return tmin;
+  _window[0] = 0; _window[1] = 1;
+  if (!clipSlab(x0, x1 - x0, b.minX, b.maxX)) return -1;
+  if (!clipSlab(z0, z1 - z0, b.minZ, b.maxZ)) return -1;
+  return _window[0];
 }

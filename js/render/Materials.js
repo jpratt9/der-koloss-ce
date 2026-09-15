@@ -385,15 +385,19 @@ vWorldNrmD = normalize(mat3(modelMatrix) * objectNormal);`);
     vec3 dW = detailWorldNormal(vWorldPosD, wn, uDetailScale);
     nW = normalize(nW + (dW - wn) * detailAmt);
   }
-  if (uWetness > 0.001) {
-    // Puddles pool on up-facing surfaces low in the world.
-    float up = smoothstep(0.55, 0.92, wn.y);
-    float low = 1.0 - smoothstep(uWetHeight, uWetHeight + 1.4, vWorldPosD.y);
+  // Puddles pool on up-facing surfaces low in the world. On a wall or a slab
+  // edge (not up-facing) or a raised deck (not low) one of those factors is
+  // exactly zero, everything below is then a no-op, and those pixels skip the
+  // two fbm evaluations entirely.
+  float wet = uWetness > 0.001
+    ? smoothstep(0.55, 0.92, wn.y) * (1.0 - smoothstep(uWetHeight, uWetHeight + 1.4, vWorldPosD.y)) * uWetness
+    : 0.0;
+  if (wet > 0.0) {
     // Two frequencies: broad damp patches with tighter standing water inside.
     float damp = smoothstep(0.42, 0.60, dFbm(vWorldPosD * uWetScale));
     float pool = smoothstep(0.52, 0.68, dFbm(vWorldPosD * uWetScale * 3.7 + 51.0)) * damp;
-    damp *= up * low * uWetness;
-    pool *= up * low * uWetness;
+    damp *= wet;
+    pool *= wet;
     nW = normalize(mix(nW, wn, pool * 0.85));
     roughnessFactor = mix(roughnessFactor, 0.28, damp);
     roughnessFactor = mix(roughnessFactor, 0.085, pool);

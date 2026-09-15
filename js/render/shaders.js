@@ -238,9 +238,13 @@ float unpackDepth(vec4 v) { return dot(v, UnpackFactors); }
 // ramp the surface shader gets from ShadowEdgeFade.js. Without it the shaft
 // geometry stays hard-edged at the box boundary even once the floor under it
 // fades smoothly, and the mismatch is more obvious than either alone.
-float sunVisibility(vec3 worldPos) {
-  vec4 sc = uShadowMatrix * vec4(worldPos, 1.0);
-  vec3 s = sc.xyz / sc.w;
+//
+// Takes a SHADOW-space position. The moon's shadow camera is orthographic, so
+// its matrix is affine (w is always 1) and shadow-space position is linear
+// along the ray: main() transforms the ray origin and direction once per pixel
+// and steps in shadow space, rather than pushing every one of VOL_STEPS
+// samples through a mat4 multiply and a divide.
+float sunVisibility(vec3 s) {
   if (s.x < 0.0 || s.x > 1.0 || s.y < 0.0 || s.y > 1.0 || s.z > 1.0) return 1.0;
   float d = unpackDepth(texture2D(uShadow, s.xy));
   float vis = step(s.z - 0.0016, d);
@@ -252,7 +256,10 @@ float sunVisibility(vec3 worldPos) {
 // Henyey-Greenstein phase function.
 float phaseHG(float cosT, float g) {
   float g2 = g * g;
-  return (1.0 - g2) / (4.0 * PI * pow(max(1e-4, 1.0 + g2 - 2.0 * g * cosT), 1.5));
+  // b^1.5 as b * sqrt(b): pow() is exp(log()) on most drivers, and this runs
+  // once per practical per raymarch step.
+  float b = max(1e-4, 1.0 + g2 - 2.0 * g * cosT);
+  return (1.0 - g2) / (4.0 * PI * b * sqrt(b));
 }
 
 void main() {
@@ -268,6 +275,8 @@ void main() {
 
   float jitter = ign(gl_FragCoord.xy + uFrame * 5.588238);
   float stepLen = dist / float(VOL_STEPS);
+  vec3 shadowOrigin = (uShadowMatrix * vec4(uCamPos, 1.0)).xyz;
+  vec3 shadowDir = (uShadowMatrix * vec4(dir, 0.0)).xyz;
 
   vec3 scatter = vec3(0.0);
   float transmittance = 1.0;
@@ -279,7 +288,7 @@ void main() {
     float density = uDensity * exp(-max(0.0, p.y - uFogBase) * uHeightFalloff);
     if (density < 1e-5) continue;
     float sigma = density * stepLen;
-    float vis = sunVisibility(p);
+    float vis = sunVisibility(shadowOrigin + shadowDir * t);
     vec3 inScatter = uSunColor * vis * phase * 4.0 + uAmbientColor * uAmbient;
 
     // Local practicals: unshadowed, but with the same phase function, so the
@@ -423,12 +432,19 @@ void main() {
 
   vec2 texel = 1.0 / uResolution;
   vec3 P = viewPosFromDepth(vUv, d, uProjInv);
-  vec3 N = normalFromDepth(uDepth, vUv, texel, uProjInv);
-  vec3 worldN = normalize((uViewInv * vec4(N, 0.0)).xyz);
   vec3 worldP = (uViewInv * vec4(P, 1.0)).xyz;
 
-  float up = smoothstep(0.62, 0.92, worldN.y);
+  // Cheapest rejections first. pool is up * low scaled by two factors that
+  // never exceed 1, so a pixel failing either test can never reach the 0.02
+  // cutoff below, and skipping the normal reconstruction and both fbm calls
+  // for it changes nothing. This pass is full resolution, and it used to pay
+  // for all of them on every wall, ceiling and raised deck on screen.
   float low = 1.0 - smoothstep(uWetHeight, uWetHeight + 1.4, worldP.y);
+  if (low < 0.02) { gl_FragColor = base; return; }
+  vec3 N = normalFromDepth(uDepth, vUv, texel, uProjInv);
+  vec3 worldN = normalize((uViewInv * vec4(N, 0.0)).xyz);
+  float up = smoothstep(0.62, 0.92, worldN.y);
+  if (up * low < 0.02) { gl_FragColor = base; return; }
   float damp = smoothstep(0.42, 0.60, sFbm(worldP * uWetScale));
   float pool = smoothstep(0.52, 0.68, sFbm(worldP * uWetScale * 3.7 + 51.0)) * damp * up * low;
   if (pool < 0.02) { gl_FragColor = base; return; }

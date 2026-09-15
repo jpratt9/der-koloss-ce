@@ -69,11 +69,7 @@ export class HUD {
     const prev = this._lastPoints;
     this._lastPoints = v;
     this.el.points.textContent = v;
-    if (flash) {
-      this.el.points.classList.remove('flash');
-      void this.el.points.offsetWidth;
-      this.el.points.classList.add('flash');
-    }
+    if (flash) this._restartAnimation(this.el.points, 'flash');
     // a points change the player caused should be legible as a change, not
     // just as a new total — show the delta and let it drift away.
     const delta = prev == null ? 0 : v - prev;
@@ -81,12 +77,28 @@ export class HUD {
     if (chip && delta !== 0) {
       chip.textContent = (delta > 0 ? '+' : '−') + Math.abs(delta);
       chip.classList.toggle('neg', delta < 0);
-      chip.classList.remove('pop');
-      void chip.offsetWidth;
-      chip.classList.add('pop');
+      this._restartAnimation(chip, 'pop');
       clearTimeout(this._deltaT);
       this._deltaT = setTimeout(() => chip.classList.remove('pop'), 950);
     }
+  }
+
+  // Replay a CSS animation by taking its class off and putting it back, which
+  // needs a forced style and layout flush in between. Points are awarded once
+  // per pellet, so a shotgun blast into a crowd used to force sixteen flushes
+  // in a single frame — and since nothing paints until the frame ends, all but
+  // the last were invisible. Batched to one flush per task, same result.
+  _restartAnimation(el, cls) {
+    const queue = this._animQueue || (this._animQueue = new Map());
+    if (!queue.size) {
+      queueMicrotask(() => {
+        for (const [node, name] of queue) node.classList.remove(name);
+        void queue.keys().next().value?.offsetWidth;
+        for (const [node, name] of queue) node.classList.add(name);
+        queue.clear();
+      });
+    }
+    queue.set(el, cls);
   }
 
   // magSize is optional: pass the weapon's real magazine capacity and the fill
@@ -113,12 +125,11 @@ export class HUD {
       this.el.ammo.classList.toggle('low', state === 'low');
       this.el.ammo.classList.toggle('empty', state === 'empty');
     }
-    // only tick when the count actually moved on the same weapon
-    if (prevSig && prevSig.endsWith(`|${name}`)) {
-      this.el.ammo.classList.remove('tick');
-      void this.el.ammo.offsetWidth;
-      this.el.ammo.classList.add('tick');
-    }
+    // only tick when the count actually moved on the same weapon. The innerHTML
+    // above has just built a fresh .mag, and a fresh element starts its
+    // animation from zero on its own — so the class only needs to be present,
+    // not bounced through a forced layout on every shot.
+    if (prevSig && prevSig.endsWith(`|${name}`)) this.el.ammo.classList.add('tick');
   }
 
   setRound(n, dogRound = false) {
@@ -153,13 +164,24 @@ export class HUD {
     this._hmT = setTimeout(() => { h.className = ''; }, 110);
   }
 
+  // Runs every frame the player stands near anything usable. Assigning
+  // innerHTML re-parses the markup and rebuilds the prompt's nodes even when
+  // the string is identical, so the DOM is only touched when the text or the
+  // bar actually changed.
   prompt(text, holdFrac = null) {
     if (text) {
-      this.el.prompt.innerHTML = text;
+      if (text !== this._promptText) {
+        this._promptText = text;
+        this.el.prompt.innerHTML = text;
+      }
       this.el.prompt.classList.remove('hidden');
       if (holdFrac !== null) {
         this.el.promptBarWrap.classList.remove('hidden');
-        this.el.promptBar.style.width = `${clamp(holdFrac, 0, 1) * 100}%`;
+        const width = `${clamp(holdFrac, 0, 1) * 100}%`;
+        if (width !== this._promptWidth) {
+          this._promptWidth = width;
+          this.el.promptBar.style.width = width;
+        }
       } else {
         this.el.promptBarWrap.classList.add('hidden');
       }

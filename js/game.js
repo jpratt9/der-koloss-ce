@@ -15,7 +15,8 @@ import {
   buildPapDisplayWeapon, updatePapDisplayWeapon, disposePapDisplayWeapon,
 } from './weapons.js';
 import { WeaponRig } from './weapons.js';
-import { ZombieManager, ZSTATES } from './zombies.js';
+import { ZombieManager, ZSTATES, ZombieVisual, createZombieModel } from './zombies.js';
+import { attachZombieDetail } from './render/ZombieDetail.js';
 import { LocalPlayer, RemotePlayer } from './player.js';
 import { FX } from './fx.js';
 import { PostFX } from './render/PostFX.js';
@@ -114,6 +115,18 @@ import {
 const INTERACT_HOLD = { power: 0.8, tele: 0.8, pap: 0.5, revive: 3, barrier: 0 };
 // Frozen zero-shake, shared so the down/dead camera path allocates nothing.
 const NO_SHAKE = Object.freeze({ yaw: 0, pitch: 0, roll: 0 });
+// Hit spheres above a zombie's feet, head first. Shared: zombieHitTest runs
+// per pellet against every live zombie, and it used to rebuild these as fresh
+// objects for each one — a shotgun blast into a full horde was ~800 of them.
+const ZOMBIE_HIT_SPHERES = Object.freeze([
+  Object.freeze({ dy: 1.5, r: 0.23, head: true }),
+  Object.freeze({ dy: 1.05, r: 0.36, head: false }),
+  Object.freeze({ dy: 0.5, r: 0.33, head: false }),
+]);
+const CRAWLER_HIT_SPHERES = Object.freeze([
+  Object.freeze({ dy: 0.45, r: 0.22, head: true }),
+  Object.freeze({ dy: 0.28, r: 0.36, head: false }),
+]);
 // Shutter weight at the slider's 100%. This governs how quickly a given camera
 // speed reaches the length clamp — not how long the smear gets, which is the
 // slider's other half (PostFX.setMotionBlurScale). Tuned so an ordinary look-
@@ -396,6 +409,9 @@ export class Game {
     // recompiles. See js/render/LightPool.js.
     this.lightPool = new LightPool(this.scene, this._lightBudget());
     this.lightPool.rescan();
+    // After the pool: programs are keyed on the light count, and this is the
+    // light state every frame will render with.
+    this._prewarmShaders();
 
     // Real occlusion: reuse the same swept-box test the weapons use, so a
     // closed paid door or a stack of crates muffles what is behind it. The
@@ -697,6 +713,44 @@ export class Game {
       fx.bloomStrength = grade.bloomStrength;
       fx.bloomThreshold = grade.bloomThreshold;
       fx.baseExposure = grade.exposure;
+    }
+  }
+
+  /**
+   * Compile every shader the match needs now, instead of on the frame each
+   * thing first appears.
+   *
+   * three compiles a material's program the first time it is drawn, and the
+   * frame waits for it. The first zombie of a match, the first hellhound and
+   * the first shot's tracer, decal and sparks each stalled the frame they
+   * appeared on while their shaders built. compile() walks hidden objects
+   * too, so the pooled effects that start invisible are covered by the scene
+   * as it stands; enemies do not exist yet, so one of each is built, compiled
+   * and dropped.
+   *
+   * Compiled with the HDR target bound: the program key includes the output
+   * colour space, and a program built for the canvas would never be reused by
+   * the world pass.
+   */
+  _prewarmShaders() {
+    const probes = new THREE.Group();
+    probes.visible = false;
+    try {
+      for (const variant of [0, 1]) {
+        if (!assets.models[variant ? 'zombie2' : 'zombie1']) continue;
+        const visual = new ZombieVisual(variant);
+        attachZombieDetail(visual);
+        probes.add(visual.group);
+      }
+      probes.add(createZombieModel(true));
+      this.scene.add(probes);
+      this.renderer.setRenderTarget(this.postfx?.sceneRT || null);
+      this.renderer.compile(this.scene, this.camera);
+    } catch (e) {
+      console.warn('[render] shader prewarm failed; shaders will compile on first use', e);
+    } finally {
+      this.renderer.setRenderTarget(null);
+      this.scene.remove(probes);
     }
   }
 
@@ -1128,8 +1182,13 @@ export class Game {
     // time a single extra zombie costs.
     const DROP_ABOVE = 1 / 46;    // ~21.7ms — genuinely missing the budget
     const RAISE_BELOW = 1 / 90;   // ~11.1ms — comfortably fast, real headroom
+    // Floor BELOW native. It used to be 1, and every quality tier caps the
+    // ratio at devicePixelRatio — so on an ordinary pixel-ratio-1 monitor the
+    // ceiling was already 1 and the controller could never drop at all. The
+    // machines that most needed rescuing were the ones it was locked out of.
+    const FLOOR = 0.5;
     let want = 0;
-    if (this._frameEma > DROP_ABOVE && cur > 1) want = -1;
+    if (this._frameEma > DROP_ABOVE && cur > FLOOR) want = -1;
     else if (this._frameEma < RAISE_BELOW && cur < target) want = 1;
 
     // Require consecutive agreeing checks before acting. A burst of zombies, a
@@ -1140,7 +1199,15 @@ export class Game {
     if (this._scaleVotes < (want < 0 ? 2 : 4)) return;
     this._scaleVote = 0; this._scaleVotes = 0;
 
-    let next = want < 0 ? Math.max(1, cur - 0.15) : Math.min(target, cur + 0.1);
+    // Under 30fps a 0.15 step takes three cooldowns to reach playable, so a
+    // badly overloaded machine takes a bigger first bite.
+    const drop = this._frameEma > 1 / 30 ? 0.25 : 0.15;
+    let next = want < 0 ? Math.max(FLOOR, cur - drop) : Math.min(target, cur + 0.1);
+    // Land exactly on the quality ceiling. Five 0.1 steps up from the 0.5 floor
+    // sum to 0.9999999999999999, and floor(1920 * that) is a 1919px canvas
+    // resampled to 1920 — a permanent full-screen blur that the < 0.01 check
+    // below would then refuse to correct.
+    if (Math.abs(next - target) < 0.01) next = target;
     if (Math.abs(next - cur) < 0.01) return;
     // Cooldown: after any change, hold for a while regardless of what the EMA
     // does. The EMA needs time to reflect the new cost before it is trustworthy,
@@ -1793,13 +1860,10 @@ export class Game {
         if (hit) hits.push({ z, dist: hit.centerDistance, head: hit.head });
         continue;
       }
-      const spheres = z.crawler
-          ? [{ x: z.x, y: z.y + 0.45, z: z.z, r: 0.22, head: true }, { x: z.x, y: z.y + 0.28, z: z.z, r: 0.36, head: false }]
-          : [{ x: z.x, y: z.y + 1.5, z: z.z, r: 0.23, head: true },
-             { x: z.x, y: z.y + 1.05, z: z.z, r: 0.36, head: false },
-             { x: z.x, y: z.y + 0.5, z: z.z, r: 0.33, head: false }];
-      for (const sp of spheres) {
-        const ox = sp.x - origin.x, oy = sp.y - origin.y, oz = sp.z - origin.z;
+      const spheres = z.crawler ? CRAWLER_HIT_SPHERES : ZOMBIE_HIT_SPHERES;
+      for (let k = 0; k < spheres.length; k++) {
+        const sp = spheres[k];
+        const ox = z.x - origin.x, oy = z.y + sp.dy - origin.y, oz = z.z - origin.z;
         const tca = ox * dir.x + oy * dir.y + oz * dir.z;
         if (tca < 0 || tca > maxDist) continue;
         const d2 = ox * ox + oy * oy + oz * oz - tca * tca;
@@ -4420,7 +4484,18 @@ export class Game {
 
     this.renderer.setRenderTarget(target);
     this.renderer.clearDepth();
-    this.renderer.render(this.scene, vc);
+    // The world pass has already brought every matrix in the scene up to date
+    // this frame, and nothing moves between the two passes (the lens above is
+    // updated explicitly). Without this, three walks the whole graph again —
+    // map, horde and every bone — to draw a handful of weapon meshes.
+    const scene = this.scene;
+    const autoUpdate = scene.matrixWorldAutoUpdate;
+    scene.matrixWorldAutoUpdate = false;
+    try {
+      this.renderer.render(scene, vc);
+    } finally {
+      scene.matrixWorldAutoUpdate = autoUpdate;
+    }
   }
 
   /**

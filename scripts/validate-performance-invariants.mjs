@@ -9,9 +9,10 @@ import path from 'node:path';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (file) => readFile(path.join(root, file), 'utf8');
-const [game, zombies, fx, particles, player, hud, weapons, map] = await Promise.all([
+const [game, zombies, fx, particles, player, hud, weapons, map, collision, interaction, sky, shaders] = await Promise.all([
   read('js/game.js'), read('js/zombies.js'), read('js/fx.js'), read('js/render/Particles.js'),
   read('js/player.js'), read('js/hud.js'), read('js/weapons.js'), read('js/map.js'),
+  read('js/collision.js'), read('js/interaction-rules.js'), read('js/render/Sky.js'), read('js/render/shaders.js'),
 ]);
 
 // Particles moved out of fx.js into a shader-backed pool, but the allocation
@@ -85,6 +86,31 @@ assert.match(hud, /if \(sig === this\._ammoSig\) return/,
   'ammo DOM must update only when values change');
 assert.match(hud, /if \(sig === this\._dropTimerSig\) return/,
   'power-up timer DOM must update only when displayed seconds change');
+
+// Frame-rate fixes. Each of these was a per-frame or per-shot cost with no
+// visible effect, and each is easy to reintroduce by "simplifying" the code.
+assert.doesNotMatch(collision, /const axes = \[/,
+  'segmentHitsBox runs against every collider per shot and per sight line; no per-call tuple arrays');
+assert.match(interaction, /import \{ segmentHitsBox \} from '\.\/collision\.js';/,
+  'interaction line of sight must reuse the allocation-free slab test, not a private copy');
+assert.match(hud, /if \(text !== this\._promptText\)/,
+  'the interaction prompt must not re-parse identical markup every frame');
+assert.doesNotMatch(hud, /classList\.remove\('(flash|pop|tick)'\);\s*void/,
+  'HUD animation restarts must not force a layout flush per call');
+assert.doesNotMatch(fx, /_decal\([^)]*\) \{[\s\S]{0,500}needsUpdate = true/,
+  'swapping a decal between two maps must not re-resolve its shader program');
+assert.doesNotMatch(game, /const spheres = z\.crawler\s*\?\s*\[/,
+  'zombie hit spheres must be shared tables, not rebuilt per zombie per pellet');
+assert.match(game, /scene\.matrixWorldAutoUpdate = false;\s*try \{\s*this\.renderer\.render\(scene, vc\);/,
+  'the viewmodel pass must not re-walk the whole scene graph the world pass just updated');
+assert.match(game, /const FLOOR = 0\.\d+;[\s\S]{0,200}cur > FLOOR\) want = -1/,
+  'dynamic resolution must be able to drop below native, or pixel-ratio-1 displays are never rescued');
+assert.match(game, /this\._prewarmShaders\(\);/,
+  'enemy and effect shaders must compile at match start, not on the frame they first appear');
+assert.match(sky, /this\.mesh\.renderOrder = [1-9]\d*;/,
+  'the sky must draw after opaque geometry so the depth test rejects every covered pixel');
+assert.match(shaders, /if \(low < 0\.02\) \{ gl_FragColor = base; return; \}[\s\S]{0,400}normalFromDepth\(uDepth, vUv, texel, uProjInv\)/,
+  'SSR must reject pixels by height before reconstructing normals and evaluating the puddle fbm');
 
 // Deterministic work-count model for the quiet-frame particle optimization.
 // This is not a wall-clock benchmark: it proves the idle path scales with live

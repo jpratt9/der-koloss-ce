@@ -157,7 +157,12 @@ export class Sky {
     this.mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), this.material);
     this.mesh.scale.setScalar(2);
     this.mesh.frustumCulled = false;
-    this.mesh.renderOrder = -1000;
+    // LAST among the opaque objects, not first. The box sits on the far plane,
+    // so once the world has written depth, every pixel a wall or floor covers
+    // fails the depth test before this shader runs. Drawn first it evaluated
+    // the cloud fbm and star field for every pixel on screen, and the world
+    // then painted over nearly all of it. Transparent objects still follow it.
+    this.mesh.renderOrder = 1000;
     this.mesh.name = 'sky';
     // The skybox is pinned to the far plane in the vertex shader, so it just
     // needs to follow the camera to stay centered.
