@@ -1,6 +1,6 @@
 // SoldierVisual's held weapon: the mount on the right forearm, the display gun
 // flattened to one mesh per material and cached per id and PaP, and its muzzle.
-// Methods of SoldierVisual: js/player.js copies them onto SoldierVisual.prototype.
+// Methods of SoldierVisual: js/player/soldier.js copies them onto SoldierVisual.prototype.
 import * as THREE from 'three';
 import { buildDisplayWeapon } from '../weapons.js';
 import { mergeGeometries } from '../../vendor/utils/BufferGeometryUtils.js';

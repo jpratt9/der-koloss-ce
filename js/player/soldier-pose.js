@@ -1,7 +1,7 @@
 // SoldierVisual's pose layer: the corpse rig stood up into a soldier, the
 // rifle-carry arms solved once at build time, and the corrections put back
 // over the clip every frame.
-// Methods of SoldierVisual: js/player.js copies them onto SoldierVisual.prototype.
+// Methods of SoldierVisual: js/player/soldier.js copies them onto SoldierVisual.prototype.
 import * as THREE from 'three';
 import { clamp } from '../utils.js';
 import { HEAD_SCALE, HEAD_SHAPE, HAND_SCALE, FOOT_SCALE, LIMB_SHAPE, SPINE_FIX } from '../render/SoldierGear.js';
