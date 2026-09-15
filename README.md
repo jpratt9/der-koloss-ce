@@ -267,19 +267,21 @@ js/                 Game source (ES modules, no bundler)
   player/             Local player movement, co-op soldier avatars
   net.js              Peer-to-peer co-op entry point: connection state, sending, teardown
   net/                Hosting and the guest-packet gate, joining, the lobby, voice chat, player identity
+  fx.js               Effects entry point: the particle pools and every ring an effect draws from
+  fx/                 Effects by kind: impacts and blood, shots, blasts, decals, screen, drops, the frame
   props/              Mystery box, perk machines, Pack-a-Punch, teleporters
   render/             Shaders, post-FX, camera rig, creature shading
   audio.js            Audio entry point: engine setup and teardown
   audio/              Engine methods (listener, playback, weapons, fallbacks, music), mixing, occlusion, ambience, impulse responses
 vendor/             Three.js, PeerJS, GLTFLoader (vendored, unmodified)
 assets/             Audio, models, textures, fonts, portraits
-scripts/            62 headless validators
+scripts/            63 headless validators
 about/  api/        About page; invite-link OG metadata
 ```
 
 ## Validators
 
-The project has no unit tests. It has **62 headless validators** that assert gameplay and rendering invariants — things that are expensive to rediscover once broken: control-key collisions, camera-spring stability, allocation budgets in the collision and particle hot paths, coplanar geometry, spawn sources, shot occlusion, weapon model integrity, host/guest combat agreement, and a whole co-op session against a fake PeerJS.
+The project has no unit tests. It has **63 headless validators** that assert gameplay and rendering invariants — things that are expensive to rediscover once broken: control-key collisions, camera-spring stability, allocation budgets in the collision and particle hot paths, coplanar geometry, spawn sources, shot occlusion, weapon model integrity, host/guest combat agreement, and a whole co-op session against a fake PeerJS.
 
 Run them all:
 
