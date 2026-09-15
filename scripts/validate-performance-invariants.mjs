@@ -6,13 +6,13 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { readGameSource, readWeaponsSource, readZombiesSource } from './lib/game-source.mjs';
+import { readGameSource, readPlayerSource, readWeaponsSource, readZombiesSource } from './lib/game-source.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (file) => readFile(path.join(root, file), 'utf8');
 const [game, zombies, fx, particles, player, hud, weapons, map, collision, interaction, sky, shaders] = await Promise.all([
   readGameSource(), readZombiesSource(), read('js/fx.js'), read('js/render/Particles.js'),
-  read('js/player.js'), read('js/hud.js'), readWeaponsSource(), read('js/map.js'),
+  readPlayerSource(), read('js/hud.js'), readWeaponsSource(), read('js/map.js'),
   read('js/collision.js'), read('js/interaction-rules.js'), read('js/render/Sky.js'), read('js/render/shaders.js'),
 ]);
 

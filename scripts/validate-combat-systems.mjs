@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import { readGameSource, readWeaponsSource, readZombiesSource } from './lib/game-source.mjs';
+import { readGameSource, readPlayerSource, readWeaponsSource, readZombiesSource } from './lib/game-source.mjs';
 import {
   chainArcTargetAllowed,
   dogHitZones,
@@ -109,7 +108,7 @@ assert.equal(shouldSpawnDogRoundReward({ dogRound: true, victimDog: true, remain
 
 const game = readGameSource();
 const weapons = readWeaponsSource();
-const player = fs.readFileSync(new URL('../js/player.js', import.meta.url), 'utf8');
+const player = readPlayerSource();
 assert.equal((game.match(/hitscanDamage\(/g) || []).length, 2,
   'local and host-validated guest hits must share the damage rule');
 assert.match(game, /this\.fireArc\(mw, s, w, dir\)/,
