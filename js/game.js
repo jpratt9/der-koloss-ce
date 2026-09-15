@@ -3604,7 +3604,19 @@ export class Game {
     }
   }
 
+  // Every message is offered to each domain handler in turn; each switches on
+  // its own message types and ignores the rest.
   onNetEvent(msg, from) {
+    this._combatEvent(msg, from);
+    this._roundEvent(msg, from);
+    this._interactEvent(msg, from);
+    this._playerEvent(msg, from);
+    this._machineEvent(msg, from);
+    this._boxEvent(msg, from);
+    this._papEvent(msg, from);
+  }
+
+  _combatEvent(msg, from) {
     const p = this.player;
     switch (msg.t) {
       case 'shoot': {
@@ -3845,6 +3857,48 @@ export class Game {
         }
         break;
       }
+      case 'monkey': {
+        if (!this.isAuthority) this.zombies.monkey = null; // host owns monkey logic
+        break;
+      }
+      case 'swap': {
+        if (!this.isAuthority || !WEAPONS[msg.w]) break;
+        const remote = this.remotePlayers.get(from);
+        if (!remote) break;
+        const wallbuy = this.map.wallbuys.find((wb) => wb.weapon === msg.w && this._remoteNearVisible(from, wb.pos, 3));
+        const source = remoteSwapSource({
+          weaponId: msg.w,
+          claimedPap: msg.pap,
+          ownedWeapons: remote.ownedWeapons,
+          spawnWeaponAllowance: remote.spawnWeaponAllowance,
+          nearMatchingWallbuy: !!wallbuy,
+          readyBoxWeapon: this.boxState.state === 'ready' && this._remoteNearVisible(from, this.map.box.pos, 3)
+            ? this.boxState.weapon : null,
+        });
+        if (source === 'owned') {
+          // PaP is read from host-owned inventory, never from msg.pap.
+          remote.equipAuthorizedWeapon(msg.w);
+          break;
+        }
+        const spawnPap = remote.spawnWeaponAllowance?.get(msg.w);
+        if (source === 'spawn') {
+          remote.authorizeWeapon(msg.w, spawnPap, false);
+          break;
+        }
+        if (source === 'wallbuy') {
+          remote.authorizeWeapon(msg.w, false, true);
+          break;
+        }
+        if (source === 'box') {
+          remote.authorizeWeapon(msg.w, false, true);
+        }
+        break;
+      }
+    }
+  }
+
+  _roundEvent(msg, from) {
+    switch (msg.t) {
       case 'round': {
         this.round = msg.n;
         this.phase = 'active';
@@ -3871,16 +3925,44 @@ export class Game {
         if (msg.on) this.remotePaused.add(msg.pid || from); else this.remotePaused.delete(msg.pid || from);
         break;
       }
+      case 'drop': {
+        if (!this.isAuthority) {
+          const drop = this.fx.spawnDrop(msg.type, msg.x, msg.z);
+          drop.netId = msg.id;
+        }
+        break;
+      }
+      case 'drop_take': {
+        if (!this.isAuthority) {
+          const d = this.fx.drops.find((dd) => dd.netId === msg.id) || this.fx.drops[0];
+          if (d) this.fx.removeDrop(d);
+          this.applyDrop(msg.type, msg.pid);
+        }
+        break;
+      }
+      case 'gameover': {
+        if (!this.over) {
+          this.over = true;
+          this.zombies.setDormant(true);
+          audio.play('gameover');
+          this.hud.banner('GAME OVER', '#ff3333', `You survived ${msg.round} round${msg.round === 1 ? '' : 's'}`);
+          setTimeout(() => { if (!this.disposed) this.exit('lobby'); }, 6000);
+        }
+        break;
+      }
+      case 'return_lobby': {
+        if (!this.isAuthority) this.exit('lobby', String(msg.reason || 'The host ended the match.').slice(0, 120));
+        break;
+      }
+    }
+  }
+
+  _interactEvent(msg, from) {
+    const p = this.player;
+    switch (msg.t) {
       case 'song': {
         const songPos = this.map.interact.find((i) => i.kind === 'song')?.pos || null;
         if (msg.on) audio.playSong(songPos); else audio.stopSong();
-        break;
-      }
-      case 'bark': {
-        const rp = msg.pid ? this.remotePlayers.get(msg.pid) : null;
-        if (msg.pid && !rp) break; // unknown source — never a full-volume phantom line
-        const pos = rp ? { x: rp.x, y: rp.y + 1.5, z: rp.z } : null;
-        this.playBark(msg.p ?? 0, msg.e, msg.v ?? 0, pos);
         break;
       }
       case 'door': {
@@ -3927,12 +4009,39 @@ export class Game {
         this.awardPoints(CFG.POINTS_BOARD);
         break;
       }
-      case 'power': this.setPower(true); break;
-      case 'power_req': {
-        if (this.isAuthority && !this.map.power.on && this._remoteNearVisible(from, this.map.power.pos, 3)) {
-          this.setPower(true);
-          this.netSend({ t: 'power' });
-        }
+      case 'radio': {
+        const radioIt = this.map.interact.find((i) => i.kind === 'radio');
+        if (msg.on) audio.playMusicBox(radioIt?.pos || null); else audio.stopMusicBox();
+        break;
+      }
+      case 'song_req': {
+        if (!this.isAuthority) break;
+        const songIt = this.map.interact.find((i) => i.kind === 'song');
+        if (!this._remoteNearVisible(from, songIt?.pos, 3)) break;
+        const songPos = songIt?.pos || null;
+        if (msg.on) audio.playSong(songPos); else audio.stopSong();
+        this.netSend({ t: 'song', on: msg.on ? 1 : 0 });
+        break;
+      }
+      case 'radio_req': {
+        if (!this.isAuthority) break;
+        const radioIt = this.map.interact.find((i) => i.kind === 'radio');
+        if (!this._remoteNearVisible(from, radioIt?.pos, 3)) break;
+        if (msg.on) audio.playMusicBox(radioIt?.pos || null); else audio.stopMusicBox();
+        this.netSend({ t: 'radio', on: msg.on ? 1 : 0 });
+        break;
+      }
+    }
+  }
+
+  _playerEvent(msg, from) {
+    const p = this.player;
+    switch (msg.t) {
+      case 'bark': {
+        const rp = msg.pid ? this.remotePlayers.get(msg.pid) : null;
+        if (msg.pid && !rp) break; // unknown source — never a full-volume phantom line
+        const pos = rp ? { x: rp.x, y: rp.y + 1.5, z: rp.z } : null;
+        this.playBark(msg.p ?? 0, msg.e, msg.v ?? 0, pos);
         break;
       }
       case 'perk_anim': {
@@ -3942,21 +4051,6 @@ export class Game {
         break;
       }
       case 'perk': break; // legacy perk ownership cosmetic; animation uses perk_anim
-      case 'drop': {
-        if (!this.isAuthority) {
-          const drop = this.fx.spawnDrop(msg.type, msg.x, msg.z);
-          drop.netId = msg.id;
-        }
-        break;
-      }
-      case 'drop_take': {
-        if (!this.isAuthority) {
-          const d = this.fx.drops.find((dd) => dd.netId === msg.id) || this.fx.drops[0];
-          if (d) this.fx.removeDrop(d);
-          this.applyDrop(msg.type, msg.pid);
-        }
-        break;
-      }
       case 'pdmg': {
         if (msg.pid === p.id) p.damage(msg.dmg, this);
         break;
@@ -4038,20 +4132,76 @@ export class Game {
         if (rp) rp.down = false;
         break;
       }
-      case 'gameover': {
-        if (!this.over) {
-          this.over = true;
-          this.zombies.setDormant(true);
-          audio.play('gameover');
-          this.hud.banner('GAME OVER', '#ff3333', `You survived ${msg.round} round${msg.round === 1 ? '' : 's'}`);
-          setTimeout(() => { if (!this.disposed) this.exit('lobby'); }, 6000);
+    }
+  }
+
+  _machineEvent(msg, from) {
+    switch (msg.t) {
+      case 'power': this.setPower(true); break;
+      case 'power_req': {
+        if (this.isAuthority && !this.map.power.on && this._remoteNearVisible(from, this.map.power.pos, 3)) {
+          this.setPower(true);
+          this.netSend({ t: 'power' });
         }
         break;
       }
-      case 'return_lobby': {
-        if (!this.isAuthority) this.exit('lobby', String(msg.reason || 'The host ended the match.').slice(0, 120));
+      case 'tele': {
+        const tele = this.map.teleporters.find((t) => t.id === msg.id);
+        if (tele) {
+          tele.charging = false;
+          tele.cooldown = 18;
+          audio.play('teleport', { pos: tele });
+        }
         break;
       }
+      case 'tele_req': {
+        if (!this.isAuthority || !this.map.power.on) break;
+        const tele = this.map.teleporters.find((t) => t.id === msg.id);
+        if (!tele || tele.charging || tele.cooldown > 0 || !this._remoteNearVisible(from, tele, 3)) break;
+        tele.charging = true;
+        audio.play('tele_charge', { pos: tele });
+        setTimeout(() => {
+          if (this.disposed) return;
+          tele.charging = false;
+          tele.cooldown = 18;
+          this.linkTeleporter(tele);
+          this.netSend({ t: 'tele', id: tele.id });
+        }, 2500);
+        break;
+      }
+      case 'tele_link': {
+        const tele = this.map.teleporters.find((t) => t.id === msg.id);
+        if (tele && !tele.linked) {
+          tele.linked = true;
+          this.teleLinks = this.map.teleporters.filter((t) => t.linked).length;
+          if (this.teleLinks < 3) this.hud.banner(`TELEPORTER LINKED ${this.teleLinks}/3`, '#7ec8e3');
+        }
+        break;
+      }
+      case 'trap_on': {
+        const t = this.map.traps.find((tt) => tt.id === msg.id);
+        if (t) this.activateTrap(t);
+        break;
+      }
+      case 'trap_req': {
+        if (!this.isAuthority || !this.map.power.on) break;
+        const trap = this.map.traps.find((t) => t.id === msg.id);
+        if (trap && !trap.active && trap.cd <= 0 && this._remoteNearVisible(from, trap, 3)) {
+          this.activateTrap(trap);
+          this.netSend({ t: 'trap_on', id: trap.id });
+        }
+        break;
+      }
+      case 'trap_off': {
+        const t = this.map.traps.find((tt) => tt.id === msg.id);
+        if (t) { t.active = false; t.cd = 45; }
+        break;
+      }
+    }
+  }
+
+  _boxEvent(msg, from) {
+    switch (msg.t) {
       case 'box_spin_req': if (this.isAuthority && this.boxState.state === 'idle' && this._remoteNearVisible(from, this.map.box.pos, 3)) this.boxStartSpin(Array.isArray(msg.owned) ? msg.owned.filter((id) => WEAPONS[id]).slice(0, 2) : []); break;
       case 'box_take': {
         if (!this.isAuthority || this.boxState.state !== 'ready' || msg.w !== this.boxState.weapon
@@ -4080,6 +4230,12 @@ export class Game {
         if (!this.isAuthority) { this.boxState.state = 'idle'; this.hud.banner('THE BOX HAS MOVED', '#ffd24a'); }
         break;
       }
+    }
+  }
+
+  _papEvent(msg, from) {
+    const p = this.player;
+    switch (msg.t) {
       case 'pap_req': {
         const remote = this.remotePlayers.get(from);
         const accepted = this.isAuthority && !this.papState.busy && WEAPONS[msg.w]
@@ -4148,117 +4304,6 @@ export class Game {
         this.hud.banner('PACK-A-PUNCH AVAILABLE', '#c9a2ff', 'All three teleporters are linked');
         audio.play('pap_done');
         this.teleLinks = 3;
-        break;
-      }
-      case 'tele': {
-        const tele = this.map.teleporters.find((t) => t.id === msg.id);
-        if (tele) {
-          tele.charging = false;
-          tele.cooldown = 18;
-          audio.play('teleport', { pos: tele });
-        }
-        break;
-      }
-      case 'tele_req': {
-        if (!this.isAuthority || !this.map.power.on) break;
-        const tele = this.map.teleporters.find((t) => t.id === msg.id);
-        if (!tele || tele.charging || tele.cooldown > 0 || !this._remoteNearVisible(from, tele, 3)) break;
-        tele.charging = true;
-        audio.play('tele_charge', { pos: tele });
-        setTimeout(() => {
-          if (this.disposed) return;
-          tele.charging = false;
-          tele.cooldown = 18;
-          this.linkTeleporter(tele);
-          this.netSend({ t: 'tele', id: tele.id });
-        }, 2500);
-        break;
-      }
-      case 'tele_link': {
-        const tele = this.map.teleporters.find((t) => t.id === msg.id);
-        if (tele && !tele.linked) {
-          tele.linked = true;
-          this.teleLinks = this.map.teleporters.filter((t) => t.linked).length;
-          if (this.teleLinks < 3) this.hud.banner(`TELEPORTER LINKED ${this.teleLinks}/3`, '#7ec8e3');
-        }
-        break;
-      }
-      case 'trap_on': {
-        const t = this.map.traps.find((tt) => tt.id === msg.id);
-        if (t) this.activateTrap(t);
-        break;
-      }
-      case 'trap_req': {
-        if (!this.isAuthority || !this.map.power.on) break;
-        const trap = this.map.traps.find((t) => t.id === msg.id);
-        if (trap && !trap.active && trap.cd <= 0 && this._remoteNearVisible(from, trap, 3)) {
-          this.activateTrap(trap);
-          this.netSend({ t: 'trap_on', id: trap.id });
-        }
-        break;
-      }
-      case 'trap_off': {
-        const t = this.map.traps.find((tt) => tt.id === msg.id);
-        if (t) { t.active = false; t.cd = 45; }
-        break;
-      }
-      case 'monkey': {
-        if (!this.isAuthority) this.zombies.monkey = null; // host owns monkey logic
-        break;
-      }
-      case 'radio': {
-        const radioIt = this.map.interact.find((i) => i.kind === 'radio');
-        if (msg.on) audio.playMusicBox(radioIt?.pos || null); else audio.stopMusicBox();
-        break;
-      }
-      case 'song_req': {
-        if (!this.isAuthority) break;
-        const songIt = this.map.interact.find((i) => i.kind === 'song');
-        if (!this._remoteNearVisible(from, songIt?.pos, 3)) break;
-        const songPos = songIt?.pos || null;
-        if (msg.on) audio.playSong(songPos); else audio.stopSong();
-        this.netSend({ t: 'song', on: msg.on ? 1 : 0 });
-        break;
-      }
-      case 'radio_req': {
-        if (!this.isAuthority) break;
-        const radioIt = this.map.interact.find((i) => i.kind === 'radio');
-        if (!this._remoteNearVisible(from, radioIt?.pos, 3)) break;
-        if (msg.on) audio.playMusicBox(radioIt?.pos || null); else audio.stopMusicBox();
-        this.netSend({ t: 'radio', on: msg.on ? 1 : 0 });
-        break;
-      }
-      case 'swap': {
-        if (!this.isAuthority || !WEAPONS[msg.w]) break;
-        const remote = this.remotePlayers.get(from);
-        if (!remote) break;
-        const wallbuy = this.map.wallbuys.find((wb) => wb.weapon === msg.w && this._remoteNearVisible(from, wb.pos, 3));
-        const source = remoteSwapSource({
-          weaponId: msg.w,
-          claimedPap: msg.pap,
-          ownedWeapons: remote.ownedWeapons,
-          spawnWeaponAllowance: remote.spawnWeaponAllowance,
-          nearMatchingWallbuy: !!wallbuy,
-          readyBoxWeapon: this.boxState.state === 'ready' && this._remoteNearVisible(from, this.map.box.pos, 3)
-            ? this.boxState.weapon : null,
-        });
-        if (source === 'owned') {
-          // PaP is read from host-owned inventory, never from msg.pap.
-          remote.equipAuthorizedWeapon(msg.w);
-          break;
-        }
-        const spawnPap = remote.spawnWeaponAllowance?.get(msg.w);
-        if (source === 'spawn') {
-          remote.authorizeWeapon(msg.w, spawnPap, false);
-          break;
-        }
-        if (source === 'wallbuy') {
-          remote.authorizeWeapon(msg.w, false, true);
-          break;
-        }
-        if (source === 'box') {
-          remote.authorizeWeapon(msg.w, false, true);
-        }
         break;
       }
     }

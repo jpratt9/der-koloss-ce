@@ -284,6 +284,27 @@ assert.match(returnToLobbySource, /unlockPointer\(\)/);
 assert.match(returnToLobbySource, /startMenuMusic\(\)/);
 assert.match(gameSource, /case 'return_lobby'/);
 assert.match(gameSource, /case 'hitcredit'/);
+// onNetEvent offers every message to one handler per domain, each a switch on
+// its own message types. Every type must land in exactly one of them: a type
+// left out is silently dropped, and a type in two runs twice.
+{
+  const router = gameSource.match(/^  onNetEvent\(msg, from\) \{[\s\S]*?\n  \}/m)?.[0] || '';
+  const handlers = [...gameSource.matchAll(/^  (_\w+Event)\(msg, from\) \{[\s\S]*?\n  \}/gm)];
+  const labels = handlers.flatMap((h) => [...h[0].matchAll(/^      case '(\w+)':/gm)].map((c) => c[1]));
+  for (const [, name] of handlers) {
+    assert.ok(router.includes(`this.${name}(msg, from);`), `onNetEvent must hand messages to ${name}`);
+  }
+  assert.equal(new Set(labels).size, labels.length, 'a net message type is handled by two handlers');
+  assert.deepEqual(labels.sort(), [
+    'bark', 'barrier', 'barrier_req', 'boardpoints', 'box_move', 'box_spin_req', 'box_state', 'box_take',
+    'dead', 'door', 'door_req', 'down', 'drop', 'drop_take', 'gameover', 'grenade', 'hitcredit',
+    'intermission', 'killcredit', 'monkey', 'pap_door', 'pap_ready', 'pap_reject', 'pap_req', 'pap_start',
+    'pap_take', 'pause', 'pdmg', 'perk', 'perk_anim', 'power', 'power_req', 'radio', 'radio_req', 'respawn',
+    'return_lobby', 'revive_done', 'revive_req', 'revive_self', 'revive_start', 'revive_stop', 'round',
+    'shoot', 'song', 'song_req', 'swap', 'tele', 'tele_link', 'tele_req', 'trap_off', 'trap_on', 'trap_req',
+    'zhit', 'zkill', 'zsplash',
+  ], 'the net handlers must cover exactly the message types the game handles');
+}
 assert.match(gameSource, /onKillConfirm\(z, head, knife = false\)[\s\S]{0,420}killCreditPresentation/);
 assert.match(gameSource, /if \(res\.killed\) this\.onKillConfirm\(z, false, true\)/);
 assert.match(gameSource, /if \(msg\.pid === p\.id && this\._acceptLocalCredit/);
