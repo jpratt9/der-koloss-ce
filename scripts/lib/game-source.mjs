@@ -6,9 +6,11 @@
 // modules in js/weapons/ that it re-exports, and the zombies are js/zombies.js
 // plus js/zombies/ in the same way, as the player is js/player.js plus
 // js/player/. The map is js/map.js plus the section builders in js/map/ that
-// its buildMap() calls. The stylesheet is style.css plus the files in style/,
-// which index.html links in name order. A check reads all of one as a single
-// string, so it keeps passing when the text it pins moves between files.
+// its buildMap() calls. The audio engine is js/audio.js plus js/audio/, whose
+// engine-*.js methods audio.js copies onto AudioEngine.prototype. The
+// stylesheet is style.css plus the files in style/, which index.html links in
+// name order. A check reads all of one as a single string, so it keeps passing
+// when the text it pins moves between files.
 import { readFileSync, readdirSync } from 'node:fs';
 
 const root = new URL('../../', import.meta.url);
@@ -47,6 +49,11 @@ export function readPlayerSource() {
 /** js/map.js, then every .js file under js/map/ in path order, joined with newlines. */
 export function readMapSource() {
   return readSplitSource(js, 'map', '.js');
+}
+
+/** js/audio.js, then every .js file under js/audio/ in path order, joined with newlines. */
+export function readAudioSource() {
+  return readSplitSource(js, 'audio', '.js');
 }
 
 /** style.css, then style/*.css in name order — the order index.html links them, which is the cascade order. */

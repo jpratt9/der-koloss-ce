@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { readFile, readdir } from 'node:fs/promises';
 import { relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readGameSource, readMapSource, readPlayerSource, readStyleSource, readWeaponsSource, readZombiesSource } from './lib/game-source.mjs';
+import { readAudioSource, readGameSource, readMapSource, readPlayerSource, readStyleSource, readWeaponsSource, readZombiesSource } from './lib/game-source.mjs';
 
 import { nextDogRound } from '../js/config.js';
 import {
@@ -33,7 +33,7 @@ const relativeToRoot = (url) => relative(rootPath, fileURLToPath(url)).split(sep
 const [zombies, assets, audioSource, inputSource, playerSource, gameSource, weaponSource, mapSource, mainSource, netSource, indexHtml, styleSource, vercelIgnore, vercelConfigText] = await Promise.all([
   readZombiesSource(),
   readFile(new URL('js/assets.js', root), 'utf8'),
-  readFile(new URL('js/audio.js', root), 'utf8'),
+  readAudioSource(),
   readFile(new URL('js/input.js', root), 'utf8'),
   readPlayerSource(),
   readGameSource(),
