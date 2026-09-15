@@ -16,7 +16,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadGameModule, repoRoot } from './lib/headless-three.mjs';
 import { readMapSource } from './lib/game-source.mjs';
-import { assertNoImportOf, assertSourceHolds } from './lib/split-modules.mjs';
+import { assertNoImportOf, assertSourceHolds, checkBuilderCalls } from './lib/split-modules.mjs';
 
 const files = readdirSync(join(repoRoot, 'js', 'map'), { recursive: true }).filter((f) => f.endsWith('.js')).sort();
 const entry = await loadGameModule('map.js');
@@ -37,41 +37,19 @@ for (const file of files) assertNoImportOf(`map/${file}`, 'map', files);
 // Every builder is called once, with exactly the names in its parameter list,
 // and returns every name js/map.js destructures from it.
 // ---------------------------------------------------------------------------
-const nameList = (text = '') => text.split(',').map((s) => s.trim()).filter(Boolean).sort();
-
-function checkBuilderCalls(mapSource, modules) {
-  let builders = 0;
-  for (const { file, source } of modules) {
-    for (const [, name, params] of source.matchAll(/^export function (\w+)\((?:\{([^}]*)\})?\) \{$/gm)) {
-      builders++;
-      const calls = [...mapSource.matchAll(new RegExp(`(?:const \\{([^}]*)\\} = )?\\b${name}\\((?:\\{([^}]*)\\})?\\);`, 'g'))];
-      assert.equal(calls.length, 1, `js/map.js must call ${name}() from js/map/${file} exactly once, found ${calls.length}`);
-      const [, destructured, passed] = calls[0];
-      assert.deepEqual(nameList(passed), nameList(params),
-        `js/map.js must pass ${name}() exactly the names in its parameter list: a name left out reaches the section as undefined`);
-      const fn = source.slice(source.indexOf(`export function ${name}(`));
-      const returned = /\n {2}return \{([^}]*)\};$/.exec(fn.slice(0, fn.indexOf('\n}\n')))?.[1];
-      for (const n of nameList(destructured)) {
-        assert.ok(nameList(returned).includes(n), `${name}() in js/map/${file} does not return ${n}, which js/map.js destructures from it`);
-      }
-    }
-  }
-  return builders;
-}
-
 const mapSource = readFileSync(join(repoRoot, 'js', 'map.js'), 'utf8');
 const modules = files.map((file) => ({ file, source: readFileSync(join(repoRoot, 'js', 'map', file), 'utf8') }));
-const builders = checkBuilderCalls(mapSource, modules);
+const builders = checkBuilderCalls('map.js', 'map', mapSource, modules);
 assert.ok(builders >= 2, `expected the section builders in js/map/, found ${builders}`);
 
 // The check has to reject what it exists to catch.
 const merge = /mergeSolidGeometry\(\{[^}]*\}\);/.exec(mapSource)?.[0];
 assert.ok(merge, 'js/map.js must call mergeSolidGeometry()');
-assert.throws(() => checkBuilderCalls(mapSource.replace(merge, merge.replace(', matCeiling', '')), modules),
+assert.throws(() => checkBuilderCalls('map.js', 'map', mapSource.replace(merge, merge.replace(', matCeiling', '')), modules),
   /must pass mergeSolidGeometry\(\) exactly the names/, 'a call that leaves a name out must fail');
-assert.throws(() => checkBuilderCalls(mapSource.replace(merge, merge.replace('matWood,', 'matWood: matMetal,')), modules),
+assert.throws(() => checkBuilderCalls('map.js', 'map', mapSource.replace(merge, merge.replace('matWood,', 'matWood: matMetal,')), modules),
   /must pass mergeSolidGeometry\(\) exactly the names/, 'a name passed under another name must fail');
-assert.throws(() => checkBuilderCalls(mapSource.replace('} = buildSurfaces();', '  matGlass,\n  } = buildSurfaces();'), modules),
+assert.throws(() => checkBuilderCalls('map.js', 'map', mapSource.replace('} = buildSurfaces();', '  matGlass,\n  } = buildSurfaces();'), modules),
   /does not return matGlass/, 'a destructured name the builder does not return must fail');
 
 // ---------------------------------------------------------------------------

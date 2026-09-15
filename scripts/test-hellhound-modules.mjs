@@ -15,10 +15,10 @@
 // - Each relative specifier names a file that exists with that exact case:
 //   macOS resolves a wrong case, and Vercel does not.
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { readdirSync } from 'node:fs';
+import { join, relative } from 'node:path';
 import { loadGameModule, repoRoot } from './lib/headless-three.mjs';
-import { assertNoImportOf } from './lib/split-modules.mjs';
+import { assertNoImportOf, importsOf, onDisk } from './lib/split-modules.mjs';
 
 const dir = join(repoRoot, 'js', 'render', 'HellhoundModel');
 const entryPath = join(repoRoot, 'js', 'render', 'HellhoundModel.js');
@@ -50,11 +50,6 @@ const specifiers = assertNoImportOf('render/HellhoundModel.js', 'render/Hellhoun
 // ---------------------------------------------------------------------------
 // The imports follow one rule.
 // ---------------------------------------------------------------------------
-/** The relative import specifiers in the file at `path`. */
-const importsOf = (path) => [...readFileSync(path, 'utf8').matchAll(/^\s*(?:import|export)\b[^'"]*?\bfrom\s*'([^']+)'/gm)]
-  .map(([, spec]) => spec)
-  .filter((spec) => spec.startsWith('.'));
-
 /** The modules in the folder each module may import. Any module not listed may import only primitives.js. */
 const ALLOWED = { 'materials.js': [], 'primitives.js': ['./materials.js'] };
 
@@ -81,17 +76,6 @@ assert.deepEqual(ruleBreaks(entryImports, new Map([...moduleImports, ['materials
 // ---------------------------------------------------------------------------
 // Each relative specifier names a file as it is spelled on disk.
 // ---------------------------------------------------------------------------
-/** Whether `spec`, imported by the file at `from`, names a file that exists with exactly that case. */
-function onDisk(from, spec) {
-  let path = dirname(from);
-  for (const part of spec.replace(/\?.*$/, '').split('/')) {
-    if (part === '.') continue;
-    if (part === '..') { path = dirname(path); continue; }
-    if (!readdirSync(path).includes(part)) return false;
-    path = join(path, part);
-  }
-  return true;
-}
 const miscased = [[entryPath, entryImports], ...files.map((file) => [join(dir, file), moduleImports.get(file)])]
   .flatMap(([from, specs]) => specs.filter((spec) => !onDisk(from, spec)).map((spec) => `${relative(repoRoot, from)} imports ${spec}`));
 assert.deepEqual(miscased, [], 'every relative import must name its file as it is spelled on disk');
