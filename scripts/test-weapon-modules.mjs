@@ -6,6 +6,7 @@
 //   no caller has to change.
 // - No module in js/weapons/ imports js/weapons.js. One that did would put an
 //   import cycle through the entry point every caller loads.
+// - Every weapon has exactly one view-model builder in js/weapons/models/.
 // - readWeaponsSource() hands the text checks every weapons file.
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -42,6 +43,25 @@ for (const file of files) {
 }
 
 // ---------------------------------------------------------------------------
+// Every weapon has exactly one view-model builder. buildViewmodel() merges the
+// class files' tables into one, so an id in two tables would silently lose one
+// builder, and an id in none would throw the first time the weapon is built.
+// ---------------------------------------------------------------------------
+const builderFile = new Map();
+const modelFiles = files.filter((f) => f.startsWith('models/') && f !== 'models/kit.js');
+for (const file of modelFiles) {
+  const tables = Object.values(await loadGameModule('weapons', file)).filter((v) => v && typeof v === 'object');
+  assert.equal(tables.length, 1, `js/weapons/${file} must export exactly one table of view-model builders`);
+  for (const [id, build] of Object.entries(tables[0])) {
+    assert.equal(typeof build, 'function', `js/weapons/${file}: ${id} is not a builder`);
+    assert.equal(builderFile.has(id), false, `${id} has a view-model builder in both ${builderFile.get(id)} and ${file}`);
+    builderFile.set(id, file);
+  }
+}
+assert.deepEqual([...builderFile.keys()].sort(), Object.keys(entry.WEAPONS).sort(),
+  'the view-model builders must cover exactly the WEAPONS ids');
+
+// ---------------------------------------------------------------------------
 // readWeaponsSource() holds every weapons file.
 // ---------------------------------------------------------------------------
 const source = readWeaponsSource();
@@ -50,4 +70,5 @@ for (const file of ['weapons.js', ...files.map((f) => `weapons/${f}`)]) {
 }
 
 console.log(`Weapon modules OK: js/weapons.js exports ${Object.keys(entry).length} names; `
-  + `${files.length} modules in js/weapons/ (${specifiers} relative imports) never import it; readWeaponsSource() holds them all.`);
+  + `${files.length} modules in js/weapons/ (${specifiers} relative imports) never import it; `
+  + `${builderFile.size} weapons have one builder each across ${modelFiles.length} class files; readWeaponsSource() holds them all.`);
