@@ -6,13 +6,15 @@
 //   no caller has to change.
 // - No module in js/player/ imports js/player.js. One that did would put an
 //   import cycle through the entry point every caller loads.
+// - Every LocalPlayer method in js/player/local-*.js is on
+//   LocalPlayer.prototype.
 // - readPlayerSource() hands the text checks every player file.
 import assert from 'node:assert/strict';
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadGameModule, repoRoot } from './lib/headless-three.mjs';
 import { readPlayerSource } from './lib/game-source.mjs';
-import { assertNoImportOf, assertSourceHolds } from './lib/split-modules.mjs';
+import { assertMethodFilesInstalled, assertNoImportOf, assertSourceHolds } from './lib/split-modules.mjs';
 
 const files = readdirSync(join(repoRoot, 'js', 'player'), { recursive: true }).filter((f) => f.endsWith('.js')).sort();
 const entry = await loadGameModule('player.js');
@@ -29,9 +31,18 @@ assert.deepEqual(Object.keys(entry).sort(), ['LocalPlayer', 'RemotePlayer', 'Sol
 const specifiers = assertNoImportOf('player.js', 'player', files);
 
 // ---------------------------------------------------------------------------
+// LocalPlayer's local-*.js files are installed on LocalPlayer.prototype,
+// method for method.
+// ---------------------------------------------------------------------------
+const localFiles = files.filter((f) => /^local-[\w-]+\.js$/.test(f));
+assert.ok(localFiles.length >= 1, `expected LocalPlayer's method files in js/player/, found ${localFiles.length}`);
+const localMethods = await assertMethodFilesInstalled(entry.LocalPlayer, 'player', localFiles);
+
+// ---------------------------------------------------------------------------
 // readPlayerSource() holds every player file.
 // ---------------------------------------------------------------------------
 assertSourceHolds(readPlayerSource(), 'readPlayerSource()', ['player.js', ...files.map((f) => `player/${f}`)]);
 
 console.log(`Player modules OK: js/player.js exports ${Object.keys(entry).length} names; `
-  + `${files.length} modules in js/player/ (${specifiers} relative imports) never import it; readPlayerSource() holds them all.`);
+  + `${files.length} modules in js/player/ (${specifiers} relative imports) never import it; `
+  + `${localMethods.size} LocalPlayer methods installed from ${localFiles.join(', ')}; readPlayerSource() holds them all.`);
