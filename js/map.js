@@ -2,9 +2,7 @@
 // wave-survival factory maps; all textures CC0, all geometry built in code.
 // buildMap() builds it from the sections in js/map/, in order, then runs it.
 import * as THREE from 'three';
-import { concreteTexture, brickTexture, metalTexture, woodTexture, makeBox, rand } from './utils.js';
-import { Sky } from './render/Sky.js';
-import { SunShadow } from './render/SunShadow.js';
+import { concreteTexture, brickTexture, metalTexture, woodTexture, makeBox } from './utils.js';
 import { decorateMap } from './map-props.js';
 import { attachShotCover } from './shot-cover.js';
 import { navInvalidate } from './navmesh.js';
@@ -18,36 +16,11 @@ import { buildElevation } from './map/elevation.js';
 import { buildDoors } from './map/doors.js';
 import { placeProps } from './map/hand-placed.js';
 import { buildInteractables } from './map/interactables.js';
+import { placeRisers } from './map/risers.js';
+import { GRADE, buildLighting } from './map/lighting.js';
+import { paintSignage } from './map/signage.js';
 
-// ---------------------------------------------------------------------------
-// Art direction. One place to tune the whole look: the post stack reads this
-// verbatim, so grading, fog and bloom stay consistent with the map's lighting.
-// Moonlit industrial: cold cyan shadow, warm sodium practicals, heavy haze.
-// ---------------------------------------------------------------------------
-// Moon placement is shared by the sky shader, the key light and the post
-// stack's in-scatter direction; one constant keeps all three in agreement.
-export const MOON_DIR = new THREE.Vector3(0.46, 0.60, -0.65).normalize();
-
-export const GRADE = {
-  exposure: 2.45,
-  bloomStrength: 0.55,
-  bloomThreshold: 1.15,
-  saturation: 1.10,
-  contrast: 1.075,
-  // Blacks are lifted, not crushed. AgX rolls the bottom end off hard, and
-  // with the power off the factory interior went genuinely unnavigable — you
-  // could not see a wall until it hit you. This keeps the night reading as
-  // night while leaving enough separation to move through a dark room.
-  lift: new THREE.Vector3(0.030, 0.040, 0.062),
-  gamma: new THREE.Vector3(1.0, 1.0, 1.0),
-  gain: new THREE.Vector3(1.045, 1.0, 0.955),     // sodium-warm highlights
-  volDensity: 0.0125,
-  volHeightFalloff: 0.14,
-  volFogBase: -0.5,
-  volAnisotropy: 0.76,
-  volAmbient: 0.16,
-  volAmbientColor: new THREE.Color(0x24344f),
-};
+export { MOON_DIR, GRADE } from './map/lighting.js';
 
 export function buildMap(scene, opts = {}) {
   const group = new THREE.Group();
@@ -137,227 +110,9 @@ export function buildMap(scene, opts = {}) {
       .map(({ zone, audit }) => `${zone.id} (${audit.blockers.length} prop collider(s))`).join('; ')}`);
   }
 
-  // ---------- risers (outdoor ground spawns) ----------
-  function riser(x, z, room) {
-    // A ground spawn is a broken slab, not a brown sticker. The old unlit
-    // MeshBasicMaterial disc ignored every light in the scene and read as a
-    // flat decal; this is lit geometry that sits in the world.
-    const c = document.createElement('canvas'); c.width = c.height = 256;
-    const g = c.getContext('2d');
-    g.fillStyle = '#1b1610'; g.fillRect(0, 0, 256, 256);
-    // Radial cracks running out from the centre of the breach.
-    g.strokeStyle = '#0a0806'; g.lineCap = 'round';
-    for (let i = 0; i < 22; i++) {
-      const a = rand(Math.PI * 2);
-      g.lineWidth = rand(1.5, 5);
-      g.beginPath(); g.moveTo(128, 128);
-      let px = 128, py = 128, ang = a;
-      for (let seg = 0; seg < 5; seg++) {
-        ang += rand(-0.5, 0.5);
-        px += Math.cos(ang) * rand(12, 30); py += Math.sin(ang) * rand(12, 30);
-        g.lineTo(px, py);
-      }
-      g.stroke();
-    }
-    g.fillStyle = 'rgba(9,7,5,0.85)';
-    for (let i = 0; i < 40; i++) { g.beginPath(); g.arc(rand(20, 236), rand(20, 236), rand(3, 16), 0, 7); g.fill(); }
-    const tex = new THREE.CanvasTexture(c);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = 8;   // a ground decal is always seen at a glancing angle
-    const riserMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.98, metalness: 0.0, color: 0x8a8a8a });
-    const m = new THREE.Mesh(new THREE.CircleGeometry(1.35, 24), riserMat);
-    m.rotation.x = -Math.PI / 2;
-    m.position.set(x, 0.022, z);
-    m.receiveShadow = true;
-    group.add(m);
-    // Displaced slab fragments around the rim so it reads in silhouette.
-    const chunkMat = matConcrete;
-    for (let i = 0; i < 9; i++) {
-      const a = (i / 9) * Math.PI * 2 + rand(-0.25, 0.25);
-      const d = rand(1.0, 1.45);
-      const s = rand(0.16, 0.4);
-      const chunk = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), chunkMat);
-      chunk.position.set(x + Math.cos(a) * d, rand(0.03, 0.12), z + Math.sin(a) * d);
-      chunk.rotation.set(rand(Math.PI), rand(Math.PI), rand(Math.PI));
-      chunk.scale.y = rand(0.35, 0.7);
-      chunk.castShadow = true; chunk.receiveShadow = true;
-      group.add(chunk);
-    }
-    risers.push({ x, z, room });
-  }
-  riser(-3.5, 18, 'mainframe'); riser(3.5, 17.5, 'mainframe');
-  riser(-10, -26, 'courtyard'); riser(5, -28, 'courtyard'); riser(-6, -36, 'courtyard'); riser(3, -40, 'courtyard');
-  riser(-6, -50, 'factory'); riser(6, -54, 'factory');
-
-  // ---------- atmosphere: drifting ground fog + skylight dust ----------
-  const fogPlaneTex = (() => {
-    const c = document.createElement('canvas'); c.width = c.height = 128;
-    const g = c.getContext('2d');
-    const grad = g.createRadialGradient(64, 64, 4, 64, 64, 62);
-    grad.addColorStop(0, 'rgba(180,195,220,0.045)');
-    grad.addColorStop(0.6, 'rgba(160,175,205,0.022)');
-    grad.addColorStop(1, 'rgba(150,165,195,0)');
-    g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
-    const t = new THREE.CanvasTexture(c);
-    return t;
-  })();
-  const fogMat = new THREE.MeshBasicMaterial({ map: fogPlaneTex, transparent: true, depthWrite: false, fog: true });
-  const fogPatches = [];
-  // Raymarched volumetric fog in the post stack now carries the atmosphere.
-  // These alpha planes remain only as a faint near-ground wisp layer.
-  const fogSpots = [
-    [0, 20, 16, 10], [-6, 16, 12, 8], [7, 23, 12, 8],           // mainframe courtyard
-    [-8, -28, 16, 10], [4, -34, 16, 10], [-4, -40, 14, 9],      // factory courtyard
-    [0, -52, 18, 10],                                            // factory floor
-  ];
-  // Intentionally not instantiated: the raymarched volumetric pass in the post
-  // stack replaces these, and layering both produced visible banded planes.
-  void fogSpots; void fogMat;
-  // dust motes falling through the factory skylight
-  const dustGeo = new THREE.BufferGeometry();
-  const dustN = 90, dustPos = new Float32Array(dustN * 3);
-  for (let i = 0; i < dustN; i++) {
-    dustPos[i * 3] = rand(-8, 8); dustPos[i * 3 + 1] = rand(0.2, 6.8); dustPos[i * 3 + 2] = rand(-56, -48);
-  }
-  dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
-  const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: 0x9db4dd, size: 0.02, transparent: true, opacity: 0.55, sizeAttenuation: true }));
-  group.add(dust);
-
-  // ---------- sky ----------
-  // Shader atmosphere: moon disc with limb darkening and halo, drifting
-  // stratus, procedural stars, horizon haze. Also the source of the IBL bake.
-  const sky = new Sky({
-    moonDir: MOON_DIR.clone(),
-    moonColor: 0xd6e4ff,
-    moonSize: 0.0026,
-    zenith: 0x040711,
-    horizon: 0x1a2740,
-    ground: 0x04060a,
-    starDensity: 0.022,
-    cloud: 0.5,
-    skyExposure: 1.15,
-  });
-  group.add(sky.mesh);
-
-  // ---------- lights (physical units: r160) ----------
-  // Sky IBL replaces most of the old flat hemisphere fill; what remains is a
-  // small bounce term so pure-shadow interiors never go fully black.
-  // Sky IBL supplies the directional ambient; this is the bounce floor that
-  // stops unlit interiors going to pure black with the power off.
-  // The ground half of the hemisphere is BOUNCE, and it has to look like the
-  // surface actually doing the bouncing. It was 0x171512 — near-black brown —
-  // while every floor in the level is pale concrete, so any surface facing away
-  // from the sky received almost nothing. On the spawn platform's steps that
-  // turned each riser into a hard black band between two lit treads: measured
-  // 16 luminance on the risers against 48 on the treads, which reads as
-  // horizontal black lines painted across the screen rather than as steps.
-  //
-  // A neutral concrete bounce lifts exactly those crushed vertical and
-  // downward faces and barely touches sky-facing surfaces, so overall exposure
-  // is essentially unchanged.
-  const hemi = new THREE.HemisphereLight(0x36496e, 0x3a3b3d, 3.6);
-  group.add(hemi);
-  const moonLight = new THREE.DirectionalLight(0xa8c0f0, 2.6);
-  moonLight.position.copy(MOON_DIR).multiplyScalar(90);
-  moonLight.castShadow = true;
-  group.add(moonLight, moonLight.target);
-  moonLight.target.position.set(0, 0, -20);
-  const sunShadow = new SunShadow(moonLight, { extent: 32, distance: 70, resolution: 2048 });
-
-  // Room lamps (dim until power). Sodium practicals are the only warm source in
-  // the map, so they carry the color contrast against the blue moonlight.
-  const lamps = [];
-  const lampDefs = [
-    [-10, 3, 0xffb765], [10, 3, 0xffb765],           // corridors
-    [-23, -13, 0xffb765], [23, -13, 0xffb765],       // labs / garage
-    [-10, -15, 0xffb765, 5.4], [10, -15, 0xffb765, 5.4], // balconies (elevated)
-    [-38, -13, 0x9dc4ff], [17, -30, 0x9dc4ff, 5.4],  // generator / chemical (cool)
-    [-7, -52, 0xffb765], [7, -52, 0xffb765],         // factory (high)
-  ];
-  const shadeMat = new THREE.MeshStandardMaterial({ color: 0x2a2723, roughness: 0.62, metalness: 0.55, side: THREE.DoubleSide });
-  for (const [lx, lz, lc, ly0] of lampDefs) {
-    const isHall = lz === -52;
-    const ly = ly0 || (isHall ? 6.2 : 3.9);
-    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), new THREE.MeshStandardMaterial({ color: 0x201c16, emissive: lc, emissiveIntensity: 0.4, roughness: 0.25 }));
-    bulb.position.set(lx, ly, lz);
-    // Conical enamel shade: gives the pool of light a hard top edge and reads
-    // as a real fixture in silhouette instead of a floating dot.
-    const shade = new THREE.Mesh(new THREE.ConeGeometry(0.32, 0.26, 14, 1, true), shadeMat);
-    shade.position.set(lx, ly + 0.14, lz);
-    shade.castShadow = false;
-    const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.8), matDark);
-    cord.position.set(lx, ly + 0.62, lz);
-    const pl = new THREE.PointLight(lc, 5, 22, 2);
-    pl.position.set(lx, ly - 0.08, lz);
-    group.add(bulb, shade, cord, pl);
-    lamps.push({ pl, bulb, shade, base: lc, flicker: Math.random() < 0.35, t: rand(10) });
-  }
-  // fire lights
-  for (const f of fires) {
-    f.light = new THREE.PointLight(0xff7028, 52, 13, 2);
-    f.light.position.set(f.x, f.y + 0.4, f.z);
-    group.add(f.light);
-  }
-
-  // ---------- painted factory signage (weathered stencil, original art) ----------
-  function wallSign(text, x, y, z, w, ry = 0, opts = {}) {
-    const c = document.createElement('canvas');
-    c.width = 1024; c.height = 128;
-    const g2 = c.getContext('2d');
-    g2.clearRect(0, 0, 1024, 128);
-    const fontSize = opts.fontSize || 84;
-    g2.font = `bold ${fontSize}px "Arial Narrow", Arial, sans-serif`;
-    g2.textAlign = 'center'; g2.textBaseline = 'middle';
-    // Always reserve paint margin. Canvas fillText otherwise clips long copy at
-    // the texture edge, which was cutting the final S from DER KOLOSS.
-    const maxTextWidth = 920;
-    const measured = g2.measureText(text).width;
-    if (measured > maxTextWidth) {
-      g2.font = `bold ${Math.floor(fontSize * maxTextWidth / measured)}px "Arial Narrow", Arial, sans-serif`;
-    }
-    // weathered paint: stamp the text many times at low alpha, then erase scratches
-    for (let i = 0; i < (opts.stamps || 7); i++) {
-      const paint = opts.paint || '214,208,190';
-      const paintAlpha = opts.paintAlpha || 0.05;
-      g2.fillStyle = `rgba(${paint},${paintAlpha + Math.random() * paintAlpha})`;
-      g2.fillText(text, 512 + rand(-2, 2), 66 + rand(-2, 2), maxTextWidth);
-    }
-    g2.globalCompositeOperation = 'destination-out';
-    for (let i = 0; i < (opts.scratches ?? 260); i++) {
-      g2.fillStyle = `rgba(0,0,0,${rand(0.2, 0.7)})`;
-      g2.fillRect(rand(0, 1024), rand(20, 110), rand(1, 6), rand(1, 3));
-    }
-    g2.globalCompositeOperation = 'source-over';
-    const tex = new THREE.CanvasTexture(c);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    // Signage is painted along a wall, so it is read edge-on more often than
-    // face-on. Without anisotropy the stencil dissolves into a shimmering band
-    // the moment you walk past it.
-    tex.anisotropy = 16;
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, w / 8), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: opts.opacity ?? 0.85 }));
-    m.position.set(x, y, z);
-    m.rotation.y = ry;
-    group.add(m);
-  }
-  wallSign('WAFFENFABRIK  DER  KOLOSS', -1, 5.6, -41.78, 16);
-  wallSign('CREATED BY VESPER.INC', -1, 4.35, -41.775, 5.2, 0, {
-    fontSize: 54, opacity: 0.9, scratches: 120, stamps: 7,
-    paint: '255,255,255', paintAlpha: 0.11,
-  });
-  wallSign('SEKTOR  A', -13.78, 3.4, 20, 7, Math.PI / 2);
-  wallSign('HALLE  3', 13.78, 3.6, -52, 8, -Math.PI / 2);
-  wallSign('LABOR', -31.78, 3.2, -13, 5, Math.PI / 2);
-  wallSign('HALLE  1', -13.78, 3.2, 6, 6, Math.PI / 2);
-  wallSign('HALLE  2', 13.78, 3.2, 6, 6, -Math.PI / 2);
-  wallSign('KRAFTWERK', -15.78, 3.4, -26, 7, Math.PI / 2);
-  wallSign('COURTYARD  EXIT', 10.22, 5.35, -30, 4.2, Math.PI / 2);
-  // Eye-level wayfinding on the Double Tap side, directly over the 1000-point
-  // door at x=8. This is intentionally readable before the player reaches it.
-  wallSign('COURTYARD  GATE   1000', 7.7, 3.72, -21.78, 5.4, 0);
-  // The neighboring upper door is not a duplicate courtyard entrance: it is
-  // the paid garage-balcony route into Chemical Testing and Teleporter B.
-  wallSign('TELEPORTER  B   750', 12, 5.55, -21.78, 4.6, 0);
-
+  placeRisers({ group, risers, matConcrete });
+  const { fogPatches, dust, dustN, sky, moonLight, sunShadow, lamps } = buildLighting({ group, fires, matDark });
+  paintSignage({ group });
   mergeSolidGeometry({ group, solidGeos, shotPieces, matWall, matBrick, matMetal, matWood, matDark, matPlate, matConcrete, matCeiling });
 
   scene.add(group);
