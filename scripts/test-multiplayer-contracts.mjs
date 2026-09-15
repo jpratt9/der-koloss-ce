@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { readGameSource } from './lib/game-source.mjs';
+import { readGameSource, readStyleSource } from './lib/game-source.mjs';
 import { CFG } from '../js/config.js';
 import {
   availableLobbyColor,
@@ -238,7 +238,7 @@ const [netSource, mainSource, gameSource, playerSource, hudSource, indexHtml, st
   readFile(new URL('../js/player.js', import.meta.url), 'utf8'),
   readFile(new URL('../js/hud.js', import.meta.url), 'utf8'),
   readFile(new URL('../index.html', import.meta.url), 'utf8'),
-  readFile(new URL('../style.css', import.meta.url), 'utf8'),
+  readStyleSource(),
 ]);
 
 assert.match(netSource, /voiceEnabled: this\.lobbyVoiceEnabled/);

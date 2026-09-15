@@ -1,0 +1,359 @@
+/* Part of style.css. index.html links style.css, then the files in style/ in name order, and that order is the cascade. */
+/* ============================================================================
+   FULL-SCREEN FX OVERLAYS
+   ========================================================================== */
+#dmg-vignette, #health-pulse, #screen-flash {
+  position: fixed; inset: 0; pointer-events: none; opacity: 0; z-index: 40;
+}
+#dmg-vignette {
+  background:
+    radial-gradient(ellipse at center, transparent 38%, rgba(190, 20, 12, 0.5) 88%, rgba(120, 6, 4, 0.75) 100%);
+  transition: opacity 0.32s var(--ease-out);
+}
+#health-pulse {
+  background: radial-gradient(ellipse at center, transparent 46%, rgba(150, 8, 2, 0.58) 100%);
+  transition: opacity 0.5s var(--ease-soft);
+}
+#screen-flash { background: #fff; transition: opacity 0.45s; z-index: 41; }
+
+/* ---- directional damage ---------------------------------------------------
+   Contract with js/fx.js (see the markup comment in index.html):
+     --dmg-angle : <number>deg — bearing of the attacker relative to where the
+                   player is looking. 0 = dead ahead, 90 = right, 180 = behind,
+                   270 = left. Any value; it is used raw in a rotate().
+     data-hit    : any string that CHANGES per hit. The attribute change is what
+                   replays the animation, so a monotonic counter is ideal.
+   The arc is a rotated wedge pinned to the screen centre, so a single element
+   covers every bearing. Compositor-only: rotate + opacity. */
+#dmg-dir {
+  --dmg-angle: 0deg;
+  position: fixed; inset: 0; z-index: 40;
+  pointer-events: none;
+  display: grid; place-items: center;
+}
+#dmg-dir .dmg-arc {
+  width: min(62vmin, 620px);
+  aspect-ratio: 1;
+  transform: rotate(var(--dmg-angle));
+  opacity: 0;
+  background:
+    conic-gradient(from -30deg,
+      rgba(236, 60, 44, 0) 0deg,
+      rgba(255, 92, 74, 0.9) 14deg,
+      rgba(255, 120, 96, 0.95) 30deg,
+      rgba(255, 92, 74, 0.9) 46deg,
+      rgba(236, 60, 44, 0) 60deg,
+      rgba(236, 60, 44, 0) 360deg);
+  /* hollow it out so it reads as a curved band at the edge of vision */
+  /* closest-side keeps the ring radii relative to the half-width, so the mask
+     lines up with the conic wedge instead of being pushed out to the corners */
+  mask-image: radial-gradient(circle closest-side at center, transparent 62%, #000 76%, #000 94%, transparent 100%);
+  -webkit-mask-image: radial-gradient(circle closest-side at center, transparent 62%, #000 76%, #000 94%, transparent 100%);
+  filter: blur(2px) drop-shadow(0 0 12px rgba(236, 60, 44, 0.55));
+}
+/* A CSS animation does not replay when an attribute merely changes value, so
+   consecutive hits alternate between two identical keyframe sets keyed on the
+   counter's last digit. fx.js just increments; the restart is free. */
+#dmg-dir[data-hit$="0"] .dmg-arc, #dmg-dir[data-hit$="2"] .dmg-arc,
+#dmg-dir[data-hit$="4"] .dmg-arc, #dmg-dir[data-hit$="6"] .dmg-arc,
+#dmg-dir[data-hit$="8"] .dmg-arc { animation: dmgArcA 900ms var(--ease-out); }
+#dmg-dir[data-hit$="1"] .dmg-arc, #dmg-dir[data-hit$="3"] .dmg-arc,
+#dmg-dir[data-hit$="5"] .dmg-arc, #dmg-dir[data-hit$="7"] .dmg-arc,
+#dmg-dir[data-hit$="9"] .dmg-arc { animation: dmgArcB 900ms var(--ease-out); }
+@keyframes dmgArcA {
+  0% { opacity: 0; } 8% { opacity: 1; } 38% { opacity: 0.9; } 100% { opacity: 0; }
+}
+@keyframes dmgArcB {
+  0% { opacity: 0; } 8% { opacity: 1; } 38% { opacity: 0.9; } 100% { opacity: 0; }
+}
+
+/* ============================================================================
+   HUD  —  sparse, high contrast, animated only on change. No backdrop filters.
+   ========================================================================== */
+#hud {
+  position: fixed; inset: 0; pointer-events: none; z-index: 30;
+  font-family: var(--f-display);
+  --hud-pad-x: clamp(24px, 2.4vw, 48px);
+  --hud-pad-y: clamp(20px, 2.2vh, 40px);
+  --map-size: 168px;
+  --map-chrome: 40px; /* frame padding + caption */
+}
+
+#crosshair {
+  --gap: 10px;
+  position: absolute; left: 50%; top: 50%; width: 0; height: 0;
+  transition: opacity 0.15s var(--ease-out);
+}
+#crosshair span { position: absolute; background: rgba(244, 248, 252, 0.92); box-shadow: 0 0 3px rgba(0, 0, 0, 0.9); }
+.ch-l { width: 7px; height: 2px; left: calc(-7px - var(--gap)); top: -1px; }
+.ch-r { width: 7px; height: 2px; left: var(--gap); top: -1px; }
+.ch-t { width: 2px; height: 7px; left: -1px; top: calc(-7px - var(--gap)); }
+.ch-b { width: 2px; height: 7px; left: -1px; top: var(--gap); }
+.ch-dot { width: 2px; height: 2px; left: -1px; top: -1px; background: rgba(255, 255, 255, 0.65); }
+
+#hitmarker { position: absolute; left: 50%; top: 50%; width: 0; height: 0; opacity: 0; }
+#hitmarker span { position: absolute; width: 10px; height: 2px; background: #fff; box-shadow: 0 0 4px rgba(0, 0, 0, 0.9); }
+#hitmarker span:nth-child(1) { transform: rotate(45deg); left: -13px; top: -9px; }
+#hitmarker span:nth-child(2) { transform: rotate(-45deg); left: 3px; top: -9px; }
+#hitmarker span:nth-child(3) { transform: rotate(-45deg); left: -13px; top: 7px; }
+#hitmarker span:nth-child(4) { transform: rotate(45deg); left: 3px; top: 7px; }
+#hitmarker.hm-show { opacity: 1; animation: hmPop 110ms var(--ease-out); }
+@keyframes hmPop { from { transform: scale(1.5); } to { transform: scale(1); } }
+#hitmarker.hm-kill span { background: var(--alert); width: 13px; box-shadow: 0 0 8px rgba(224, 69, 58, 0.9); }
+#hitmarker.hm-head span { background: var(--sodium); box-shadow: 0 0 8px rgba(255, 180, 84, 0.9); }
+#hitmarker.hm-kill.hm-head span { background: #ff8a2a; }
+
+/* ---- bottom-left: round · vitals · points · perks ---- */
+#bottom-left {
+  position: absolute; left: var(--hud-pad-x); bottom: var(--hud-pad-y);
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.95);
+}
+.round-kicker, .points-kicker, .vitals-kicker {
+  font-family: var(--f-mono);
+  font-size: var(--t-3xs);
+  letter-spacing: var(--track-wide);
+  color: rgba(185, 203, 224, 0.5);
+  transition: opacity var(--dur-2);
+}
+.round-block { position: relative; }
+.round-block:has(#round:empty) .round-kicker { opacity: 0; }
+#round {
+  font-size: clamp(46px, 4.4vw, 66px);
+  font-weight: 400; line-height: 0.88; letter-spacing: 3px;
+  color: var(--alert);
+  text-shadow: 0 0 26px rgba(224, 69, 58, 0.55), 0 2px 5px rgba(0, 0, 0, 0.95);
+  min-height: 46px;
+  font-variant-numeric: tabular-nums;
+}
+#round.round-anim { animation: roundIn 1.3s var(--ease-out); }
+@keyframes roundIn {
+  0%   { transform: scale(2.2); opacity: 0; }
+  30%  { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1); }
+}
+
+.vitals-block { width: 190px; }
+.vitals-kicker { display: block; margin-bottom: 3px; }
+#health-track {
+  position: relative;
+  width: 100%; height: 6px;
+  background: rgba(6, 9, 15, 0.72);
+  box-shadow: inset 0 0 0 1px rgba(150, 178, 210, 0.22);
+  overflow: hidden;
+}
+#health-fill {
+  position: absolute; inset: 0;
+  transform-origin: left center;
+  transform: scaleX(1);
+  background: linear-gradient(90deg, rgba(210, 228, 244, 0.75), rgba(236, 246, 255, 0.95));
+  transition: transform 220ms var(--ease-soft), background-color 260ms;
+  will-change: transform;
+}
+#health-track[data-state='warn'] #health-fill { background: linear-gradient(90deg, #ffd28a, var(--sodium)); }
+#health-track[data-state='crit'] #health-fill { background: linear-gradient(90deg, #ff8a7a, var(--alert)); }
+/* the critical-health edge pulses on opacity only — no box-shadow animation
+   during live gameplay */
+#health-track::after {
+  content: '';
+  position: absolute; inset: 0;
+  box-shadow: inset 0 0 0 1px var(--alert);
+  opacity: 0;
+  pointer-events: none;
+}
+#health-track[data-state='crit']::after { animation: critEdge 0.85s var(--ease-io) infinite alternate; }
+@keyframes critEdge { from { opacity: 0.35; } to { opacity: 1; } }
+#health-tip {
+  position: absolute; top: 0; bottom: 0; width: 2px;
+  background: rgba(255, 255, 255, 0.75);
+  transform: translate3d(0, 0, 0);
+  transition: transform 220ms var(--ease-soft);
+  will-change: transform;
+}
+
+.points-block { margin-top: 2px; }
+.points-kicker { display: block; }
+.points-row { position: relative; display: flex; align-items: baseline; gap: var(--s-2); }
+#points {
+  font-size: clamp(26px, 2.3vw, 34px); font-weight: 400; letter-spacing: 2px;
+  color: var(--bone);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+#points.flash { animation: ptsFlash 0.4s var(--ease-out); }
+@keyframes ptsFlash {
+  0%   { color: var(--sodium); transform: scale(1.14); }
+  100% { color: var(--bone); transform: scale(1); }
+}
+#points-delta {
+  font-family: var(--f-mono);
+  font-size: var(--t-sm); letter-spacing: 0.5px;
+  color: var(--sodium);
+  opacity: 0;
+}
+#points-delta.pop { animation: deltaPop 900ms var(--ease-out); }
+@keyframes deltaPop {
+  0%   { opacity: 0; transform: translate3d(0, 6px, 0); }
+  18%  { opacity: 1; transform: translate3d(0, 0, 0); }
+  70%  { opacity: 1; transform: translate3d(0, -3px, 0); }
+  100% { opacity: 0; transform: translate3d(0, -10px, 0); }
+}
+#points-delta.neg { color: var(--alert); }
+
+#perk-icons { display: flex; gap: 6px; margin-top: 4px; }
+.perk-icon {
+  --perk: var(--moon);
+  width: 32px; height: 32px;
+  border-radius: 3px;
+  box-shadow: 0 0 12px -4px var(--perk);
+  animation: perkIn 420ms var(--ease-out) both;
+}
+/* The perk art carries its own gold frame, so the chip contributes only the
+   per-perk glow — a border here would read as a second frame. */
+img.perk-icon { display: block; object-fit: contain; }
+/* Fallback for a perk id with no shipped art: the original bordered glyph. */
+.perk-icon-glyph {
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--f-display); font-size: var(--t-sm); font-weight: 400; letter-spacing: 0;
+  color: var(--perk);
+  border: 1px solid var(--perk);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--perk) 22%, transparent), rgba(4, 6, 11, 0.8));
+}
+@keyframes perkIn {
+  from { opacity: 0; transform: scale(0.55) translate3d(0, 6px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ---- bottom-right: weapon · ammo · grenades ---- */
+#bottom-right {
+  position: absolute; right: var(--hud-pad-x); bottom: var(--hud-pad-y);
+  display: flex; flex-direction: column; align-items: flex-end; gap: 3px;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.95);
+}
+#weapon-name {
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs); letter-spacing: var(--track-wide);
+  color: rgba(185, 203, 224, 0.62);
+  text-transform: uppercase;
+}
+#ammo {
+  display: flex; align-items: baseline; gap: 4px;
+  font-size: clamp(36px, 3.2vw, 48px); font-weight: 400; letter-spacing: 1px; line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--bone);
+}
+#ammo .mag { transition: color var(--dur-2); }
+#ammo .sep { color: rgba(150, 178, 210, 0.35); font-size: 0.5em; margin: 0 2px; }
+#ammo .reserve { color: rgba(185, 203, 224, 0.62); font-size: 0.52em; letter-spacing: 1px; }
+#ammo.tick .mag { animation: ammoTick 200ms var(--ease-out); }
+@keyframes ammoTick { from { transform: translate3d(0, -3px, 0); opacity: 0.55; } to { transform: none; opacity: 1; } }
+#ammo.low .mag { color: var(--sodium); }
+#ammo.empty .mag { color: var(--alert); animation: ammoEmpty 0.75s var(--ease-io) infinite alternate; }
+@keyframes ammoEmpty { from { opacity: 0.45; } to { opacity: 1; } }
+#ammo-track {
+  width: 120px; height: 3px; margin-top: 3px;
+  background: rgba(6, 9, 15, 0.7);
+  box-shadow: inset 0 0 0 1px rgba(150, 178, 210, 0.18);
+  overflow: hidden;
+}
+#ammo-fill {
+  height: 100%; width: 100%;
+  transform-origin: right center;
+  background: rgba(220, 232, 244, 0.55);
+  transition: transform 160ms var(--ease-soft), background-color var(--dur-2);
+  will-change: transform;
+}
+#ammo.low ~ #ammo-track #ammo-fill { background: var(--sodium); }
+#ammo.empty ~ #ammo-track #ammo-fill { background: var(--alert); }
+
+#nade-row { display: flex; gap: var(--s-2); justify-content: flex-end; align-items: center; margin-top: 6px; }
+#nade-count { font-family: var(--f-mono); font-size: var(--t-2xs); color: rgba(185, 203, 224, 0.62); letter-spacing: 1px; }
+#grenades { display: flex; gap: 4px; justify-content: flex-end; }
+.nade {
+  width: 9px; height: 14px;
+  background: linear-gradient(180deg, #8a9a72, #58664a);
+  border-radius: 2px 2px 4px 4px;
+  border: 1px solid rgba(4, 6, 11, 0.9);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  animation: perkIn 260ms var(--ease-out) both;
+}
+.nade.monkey { background: linear-gradient(180deg, #cfa066, #8a6534); }
+#monkey-count {
+  font-family: var(--f-mono); font-size: var(--t-2xs); letter-spacing: 1px;
+  color: var(--sodium); margin-bottom: 2px;
+}
+#monkey-count em { font-style: normal; color: rgba(255, 180, 84, 0.5); font-size: var(--t-3xs); }
+
+/* ---- top strip ---- */
+/* Top-right belongs to the co-op roster. When it is on screen the power-up
+   timers drop below it; in solo they take the corner themselves. */
+#drop-timers {
+  position: absolute;
+  top: var(--hud-pad-y);
+  right: var(--hud-pad-x);
+  display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
+  text-align: right;
+}
+#multiplayer-roster:not(.hidden) ~ #drop-timers { top: calc(var(--hud-pad-y) + 216px); }
+.drop-timer {
+  font-family: var(--f-mono);
+  font-size: var(--t-xs); letter-spacing: var(--track);
+  padding: 4px 10px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: rgba(4, 6, 11, 0.55);
+  text-shadow: 0 1px 3px #000;
+  animation: pulse 0.9s var(--ease-io) infinite alternate;
+}
+@keyframes pulse { from { opacity: 0.68; } to { opacity: 1; } }
+
+/* FRAPS-style frame counter: bare yellow digits with a hard black outline, in
+   the strip above the top-right HUD. 2px + 18px ends at 20px, which is where
+   the drop timers (--hud-pad-y is at least 20px) and the co-op roster begin. */
+#fps-counter {
+  position: absolute; top: 2px; right: 8px;
+  font: 700 18px/1 Tahoma, Verdana, sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: #ffff00;
+  text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+}
+
+#wave-progress {
+  position: absolute; top: var(--hud-pad-y); left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--f-mono); font-size: var(--t-xs); letter-spacing: var(--track-wide);
+  color: rgba(185, 203, 224, 0.62);
+  text-shadow: 0 2px 6px #000;
+}
+#pap-notice {
+  position: absolute; top: calc(var(--hud-pad-y) + 26px); left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--f-mono); font-size: var(--t-xs); letter-spacing: var(--track);
+  color: #cba2ff; text-shadow: 0 0 16px rgba(138, 92, 255, 0.8), 0 2px 5px #000;
+}
+
+/* ---- minimap ---- */
+/* minimap takes the top-left corner; the top-right is reserved for squad +
+   power-up state so the two never overlap in co-op */
+#minimap-frame {
+  position: absolute; left: var(--hud-pad-x); top: var(--hud-pad-y);
+  padding: 5px;
+  /* Near-opaque: the canvas inside is opaque, so a translucent surround left a
+     bright halo of live 3D frame around a dark map whenever the camera faced
+     the moon. Dark and desaturated keeps it inside the HUD's palette. */
+  background: rgba(6, 9, 15, 0.9);
+  border: 1px solid rgba(150, 178, 210, 0.16);
+  border-radius: 2px;
+}
+#minimap { display: block; width: var(--map-size); height: var(--map-size); }
+#minimap-frame .minimap-label {
+  display: block; margin-top: 3px;
+  font-family: var(--f-mono); font-size: var(--t-3xs); letter-spacing: var(--track);
+  color: rgba(150, 178, 210, 0.42); text-align: center;
+}
+#minimap-frame .minimap-tick {
+  position: absolute; top: 2px; left: 50%; width: 1px; height: 5px;
+  background: rgba(255, 180, 84, 0.7);
+}
+
