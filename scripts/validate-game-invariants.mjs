@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { readFile, readdir } from 'node:fs/promises';
 import { relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readAudioSource, readGameSource, readMapSource, readPlayerSource, readStyleSource, readWeaponsSource, readZombiesSource } from './lib/game-source.mjs';
+import { readAudioSource, readGameSource, readMainSource, readMapSource, readPlayerSource, readStyleSource, readWeaponsSource, readZombiesSource } from './lib/game-source.mjs';
 
 import { nextDogRound } from '../js/config.js';
 import {
@@ -39,7 +39,7 @@ const [zombies, assets, audioSource, inputSource, playerSource, gameSource, weap
   readGameSource(),
   readWeaponsSource(),
   readMapSource(),
-  readFile(new URL('js/main.js', root), 'utf8'),
+  readMainSource(),
   readFile(new URL('js/net.js', root), 'utf8'),
   readFile(new URL('index.html', root), 'utf8'),
   readStyleSource(),

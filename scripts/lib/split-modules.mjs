@@ -2,7 +2,8 @@
 // test-game-modules.mjs (js/game/), test-weapon-modules.mjs (js/weapons/),
 // test-zombie-modules.mjs (js/zombies/), test-cinematic-modules.mjs
 // (js/cinematic-director/), test-player-modules.mjs (js/player/),
-// test-map-modules.mjs (js/map/) and test-audio-modules.mjs (js/audio/).
+// test-map-modules.mjs (js/map/), test-audio-modules.mjs (js/audio/) and
+// test-main-modules.mjs (js/main/).
 // Every path here is relative to js/.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

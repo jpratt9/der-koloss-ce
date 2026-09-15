@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { THREE, loadGameModule } from './lib/headless-three.mjs';
 import './lib/headless-map.mjs';
+import { readMainSource } from './lib/game-source.mjs';
 
 const { segmentHitsBox } = await loadGameModule('collision.js');
 const { interactionLineClear } = await loadGameModule('interaction-rules.js');
@@ -237,7 +238,7 @@ const endOfTask = () => new Promise((resolve) => setTimeout(resolve, 0));
 {
   const [indexHtml, mainSrc] = await Promise.all([
     readFile(new URL('../index.html', import.meta.url), 'utf8'),
-    readFile(new URL('../js/main.js', import.meta.url), 'utf8'),
+    readMainSource(),
   ]);
   assert.match(indexHtml, /<div id="fps-counter" class="hidden"/, 'the counter must start hidden');
   assert.match(indexHtml, /<button id="btn-pause-fps" class="mbtn">/, 'the pause menu must carry the FPS toggle');

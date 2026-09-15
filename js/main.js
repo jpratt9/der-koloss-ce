@@ -3,19 +3,14 @@
 import { CFG, STORE_KEY, NAME_KEY } from './config.js';
 import { initInput, input, lockPointer, unlockPointer, clearPressed, resetInputState } from './input.js';
 import { audio } from './audio.js';
-import { HUD } from './hud.js';
 import { Net } from './net.js';
 import { Game } from './game.js';
 import { assets } from './assets.js';
 import { PERSONAS, drawPortrait } from './personas.js';
 import { WEAPONS } from './weapons.js';
 import { getMenuMusicOffset, keepMenuMusicClock } from './site-audio.js?v=6';
-import { shouldRefreshLobbyUi, shouldShowGameplayCanvas } from './multiplayer-contracts.js';
-
-const $ = (id) => document.getElementById(id);
-const DEBUG = /^(localhost|127\.0\.0\.1)$/.test(location.hostname)
-  && new URLSearchParams(location.search).get('debug') === '1';
-function debugExpose(name, value) { if (DEBUG) window[name] = value; }
+import { shouldRefreshLobbyUi } from './multiplayer-contracts.js';
+import { $, DEBUG, debugExpose, getName, buildInviteLink, app, canvas, setCanvas, showScreen, toast } from './main/app.js';
 
 // ---------------- options ----------------
 const DEFAULTS = {
@@ -335,50 +330,8 @@ function bindCheatsUI() {
   });
 }
 
-function getName() {
-  let n = localStorage.getItem(NAME_KEY);
-  if (!n) {
-    n = 'Soldier' + Math.floor(Math.random() * 900 + 100);
-    localStorage.setItem(NAME_KEY, n);
-  }
-  return n;
-}
-
-const PUBLIC_SITE_URL = 'https://www.derkoloss.com';
-function buildInviteLink(code, inviter = getName()) {
-  const safeCode = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
-  const safeInviter = String(inviter || '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 14);
-  return `${PUBLIC_SITE_URL}/invite/${encodeURIComponent(safeCode)}${safeInviter ? `?from=${encodeURIComponent(safeInviter)}` : ''}`;
-}
-
-// ---------------- app state ----------------
-const app = {
-  screen: 'menu', // menu | lobby | game
-  game: null,
-  net: null,
-  hud: new HUD(),
-  ready: false,
-};
-let canvas;
 let lastTabT = 0; // last Tab press (scoreboard) — pointer-unlock guard
 window.addEventListener('keydown', (e) => { if (e.code === 'Tab') lastTabT = performance.now(); }, { capture: true });
-
-function showScreen(name) {
-  for (const s of ['menu', 'lobby', 'options', 'pause', 'solo-fs-modal', 'join-modal', 'charselect', 'charpage', 'cheats']) $(s).classList.add('hidden');
-  $('hud').classList.add('hidden');
-  if (name === 'game') {
-    $('hud').classList.remove('hidden');
-    app.screen = 'game'; // was missing — broke every "am I in-game?" check (incl. click-to-relock)
-    canvas?.classList.toggle('hidden', !shouldShowGameplayCanvas('game', !!app.game));
-    canvas?.setAttribute('aria-hidden', String(!shouldShowGameplayCanvas('game', !!app.game)));
-    return;
-  }
-  $(name).classList.remove('hidden');
-  app.screen = name;
-  const showCanvas = shouldShowGameplayCanvas(name, !!app.game);
-  canvas?.classList.toggle('hidden', !showCanvas);
-  canvas?.setAttribute('aria-hidden', String(!showCanvas));
-}
 
 // ---------------- options UI ----------------
 function bindOptionsUI() {
@@ -762,19 +715,9 @@ function resumeGame() {
   lockPointer(canvas);
 }
 
-// ---------------- toast ----------------
-let toastT = null;
-function toast(msg, ms = 3200) {
-  const el = $('toast');
-  el.textContent = msg;
-  el.classList.remove('hidden');
-  clearTimeout(toastT);
-  toastT = setTimeout(() => el.classList.add('hidden'), ms);
-}
-
 // ---------------- boot ----------------
 function boot() {
-  canvas = $('game-canvas');
+  setCanvas($('game-canvas'));
   debugExpose('__audio', audio);
   initInput(canvas);
   bindOptionsUI();
