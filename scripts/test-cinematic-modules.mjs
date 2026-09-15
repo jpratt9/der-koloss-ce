@@ -36,7 +36,7 @@ for (const line of ['cinematic.html', 'js/cinematic-director.js', 'js/cinematic-
 // ---------------------------------------------------------------------------
 // The modules that never touch the page load in Node.
 // ---------------------------------------------------------------------------
-const PAGE_FREE = ['math.js', 'opening.js', 'shots.js'];
+const PAGE_FREE = ['math.js', 'opening.js', 'shots.js', 'motion.js', 'pose.js', 'director-weapon.js'];
 for (const file of PAGE_FREE) {
   assert.ok(files.includes(file), `js/cinematic-director/${file} is missing`);
   await loadGameModule('cinematic-director', file);
