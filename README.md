@@ -265,7 +265,8 @@ js/                 Game source (ES modules, no bundler)
   zombies/            Horde AI and spawning, corpse and hound bodies, hit volumes, poses
   player.js           Player entry point: re-exports js/player/
   player/             Local player movement, co-op soldier avatars
-  net.js              Peer-to-peer co-op
+  net.js              Peer-to-peer co-op entry point: connection state, sending, teardown
+  net/                Hosting and the guest-packet gate, joining, the lobby, voice chat, player identity
   props/              Mystery box, perk machines, Pack-a-Punch, teleporters
   render/             Shaders, post-FX, camera rig, creature shading
   audio.js            Audio entry point: engine setup and teardown
