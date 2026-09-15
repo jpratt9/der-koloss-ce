@@ -21,7 +21,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { DOOR_FIT, MAP_DOOR_DEFS, MAP_WALL_RUNS, cappedWallRuns } from '../js/map-layout.js';
-import { readMapSource } from './lib/game-source.mjs';
+import { readMapSource, readShadersSource } from './lib/game-source.mjs';
 
 const EPS = 0.02;   // a plane separation below this is not a separation
 
@@ -281,7 +281,7 @@ assert.match(sunSource, /installShadowEdgeFade\(\);/,
 const postSource = await readFile(new URL('../js/render/PostFX.js', import.meta.url), 'utf8');
 assert.match(postSource, /uShadowEdgeFade: \{ value: SHADOW_EDGE_FADE \}/,
   'the volumetric pass must take its edge ramp from the same constant, not a literal');
-const shaderSource = await readFile(new URL('../js/render/shaders.js', import.meta.url), 'utf8');
+const shaderSource = readShadersSource();
 assert.match(shaderSource, /1\.0 - smoothstep\(1\.0 - uShadowEdgeFade, 1\.0, max\(e\.x, e\.y\)\)/,
   'sunVisibility() in the raymarch must apply the same edge ramp');
 

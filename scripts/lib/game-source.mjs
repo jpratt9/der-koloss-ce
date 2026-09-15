@@ -8,10 +8,11 @@
 // js/player/. The map is js/map.js plus the section builders in js/map/ that
 // its buildMap() calls. The audio engine is js/audio.js plus js/audio/, whose
 // engine-*.js methods audio.js copies onto AudioEngine.prototype. The page
-// script is js/main.js plus the modules in js/main/ that it imports. The
-// stylesheet is style.css plus the files in style/, which index.html links in
-// name order. A check reads all of one as a single string, so it keeps passing
-// when the text it pins moves between files.
+// script is js/main.js plus the modules in js/main/ that it imports. The post
+// stack's GLSL is js/render/shaders.js plus the modules in js/render/shaders/
+// that it re-exports. The stylesheet is style.css plus the files in style/,
+// which index.html links in name order. A check reads all of one as a single
+// string, so it keeps passing when the text it pins moves between files.
 import { readFileSync, readdirSync } from 'node:fs';
 
 const root = new URL('../../', import.meta.url);
@@ -60,6 +61,11 @@ export function readAudioSource() {
 /** js/main.js, then every .js file under js/main/ in path order, joined with newlines. */
 export function readMainSource() {
   return readSplitSource(js, 'main', '.js');
+}
+
+/** js/render/shaders.js, then every .js file under js/render/shaders/ in path order, joined with newlines. */
+export function readShadersSource() {
+  return readSplitSource(new URL('render/', js), 'shaders', '.js');
 }
 
 /** style.css, then style/*.css in name order — the order index.html links them, which is the cascade order. */

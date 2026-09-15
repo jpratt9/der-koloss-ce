@@ -62,7 +62,7 @@ if (failures.length) {
 // Guard the exact trap directly, so the intent survives even if someone
 // reorganises the shader files: no backticks are allowed inside the GLSL
 // files, because every one of them is a template literal from top to bottom.
-const shaderFiles = walk(join(root, 'js', 'render')).filter((f) => /shaders\.js$/.test(f));
+const shaderFiles = walk(join(root, 'js', 'render')).filter((f) => /shaders([\\/][\w-]+)?\.js$/.test(f));
 for (const f of shaderFiles) {
   const src = readFileSync(f, 'utf8');
   // Count backticks per line; a shader file should only ever have them as the
@@ -76,4 +76,4 @@ for (const f of shaderFiles) {
   });
 }
 
-console.log(`module syntax OK (${files.length} files)`);
+console.log(`module syntax OK (${files.length} files; backtick guard on ${shaderFiles.length} shader files)`);
