@@ -50,6 +50,7 @@ export class HUD {
       healthTip: $('health-tip'),
       ammoTrack: $('ammo-track'),
       ammoFill: $('ammo-fill'),
+      fps: $('fps-counter'),
     };
     this._hmT = null;
     this._bannerT = null;
@@ -533,6 +534,20 @@ export class HUD {
     this._waveSig = sig;
     this.el.waveProgress.textContent = value;
     this.el.waveProgress.classList.toggle('hidden', !show);
+  }
+
+  // FRAPS-style frame counter, off unless the player turns it on from the pause
+  // menu. The game reports once a second; the DOM is only touched when the
+  // number actually changes.
+  showFps(on) {
+    if (this.el.fps) this.el.fps.classList.toggle('hidden', !on);
+  }
+
+  setFps(fps) {
+    const el = this.el.fps;
+    if (!el || fps === this._fps) return;
+    this._fps = fps;
+    el.textContent = fps;
   }
 
   papNotice(text) {

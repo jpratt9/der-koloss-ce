@@ -1115,7 +1115,23 @@ export class Game {
     // Post overlays decay on wall-clock time so they still clear while paused.
     this._postDamage = Math.max(0, (this._postDamage || 0) - dt * 3.2);
     this._postFlash = Math.max(0, (this._postFlash || 0) - dt * 7);
-    if (shouldRender) this.render(dt);
+    if (shouldRender) {
+      this.render(dt);
+      this._countFrame(now);
+    }
+  }
+
+  // Frames actually drawn over the last second, FRAPS-style: an average rather
+  // than 1/dt, so the number holds still long enough to read. The watchdog's
+  // background ticks draw nothing and are not counted.
+  _countFrame(now) {
+    if (this._fpsSince == null) { this._fpsSince = now; this._fpsFrames = 0; return; }
+    this._fpsFrames++;
+    const elapsed = now - this._fpsSince;
+    if (elapsed < 1) return;
+    this.hud.setFps(Math.round(this._fpsFrames / elapsed));
+    this._fpsSince = now;
+    this._fpsFrames = 0;
   }
 
   /**

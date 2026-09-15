@@ -80,7 +80,7 @@
      the game has no external font dependency and runs fully offline. -->
 <link rel="preload" href="assets/fonts/staatliches-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="assets/fonts/special-elite-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?v=10" />
+<link rel="stylesheet" href="style.css?v=11" />
 <!-- menu background plate; every rule inside is scoped to #menu-bg -->
 <link rel="stylesheet" href="menu-bg.css?v=1" />
 <script type="importmap">
@@ -181,6 +181,8 @@
       <tbody id="score-rows"></tbody>
     </table>
   </div>
+
+  <div id="fps-counter" class="hidden" aria-hidden="true"></div>
 </div>
 
 <!-- ==================== MAIN MENU ==================== -->
@@ -550,6 +552,9 @@
             <option value="medium">Medium</option>
             <option value="high">High</option>
           </select>
+
+          <label for="opt-fps">FPS counter</label>
+          <div class="opt-toggle"><input id="opt-fps" type="checkbox" /><span class="opt-switch" aria-hidden="true"></span></div>
         </div>
       </section>
 
@@ -592,6 +597,7 @@
       <div class="row-buttons col">
         <button id="btn-resume" class="mbtn primary">RESUME</button>
         <button id="btn-pause-fs" class="mbtn">FULLSCREEN: OFF</button>
+        <button id="btn-pause-fps" class="mbtn">FPS COUNTER: OFF</button>
         <button id="btn-pause-mic" class="mbtn">MIC: ON</button>
         <button id="btn-pause-options" class="mbtn">OPTIONS</button>
         <button id="btn-quit" class="mbtn danger">QUIT TO MENU</button>

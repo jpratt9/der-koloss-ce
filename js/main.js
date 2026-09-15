@@ -21,7 +21,7 @@ function debugExpose(name, value) { if (DEBUG) window[name] = value; }
 const DEFAULTS = {
   sensitivity: 1.0, fov: 110, master: 0.8, sfx: 1.0, music: 0.7, voice: 0.55,
   quality: 'high', invertY: false, brightness: 1.0, brightnessCalibration: 2, masterTouched: false,
-  motionBlur: 1.0, settingsSchema: 2,
+  motionBlur: 1.0, showFps: false, settingsSchema: 2,
 };
 function loadOptions() {
   try {
@@ -411,6 +411,10 @@ function bindOptionsUI() {
   const inv = $('opt-invert');
   inv.checked = options.invertY;
   inv.addEventListener('change', () => { options.invertY = inv.checked; saveOptions(options); });
+  // Not through applyOptions(): that re-applies quality, which rebuilds the
+  // post stack — a hitch the Options screen can cause mid-match.
+  $('opt-fps').addEventListener('change', (e) => setShowFps(e.target.checked));
+  syncFpsControls();
   const nameEl = $('opt-name');
   nameEl.value = getName();
   nameEl.addEventListener('change', () => {
@@ -420,7 +424,20 @@ function bindOptionsUI() {
   });
 }
 
+// One setting, two controls: the Options toggle and the pause-menu button.
+function setShowFps(on) {
+  options.showFps = !!on;
+  saveOptions(options);
+  app.hud.showFps(options.showFps);
+  syncFpsControls();
+}
+function syncFpsControls() {
+  $('opt-fps').checked = !!options.showFps;
+  $('btn-pause-fps').textContent = `FPS COUNTER: ${options.showFps ? 'ON' : 'OFF'}`;
+}
+
 function applyOptions() {
+  app.hud.showFps(!!options.showFps);
   audio.setVolume('master', effectiveMaster());
   audio.setVolume('sfx', options.sfx);
   audio.setVolume('music', options.music);
@@ -982,6 +999,7 @@ function boot() {
   }
   document.addEventListener('fullscreenchange', syncFsUI);
   $('btn-pause-fs').addEventListener('click', () => { audio.play('ui'); toggleFullscreen(); });
+  $('btn-pause-fps').addEventListener('click', () => { audio.play('ui'); setShowFps(!options.showFps); });
   $('btn-lobby-fs').addEventListener('click', () => { audio.play('ui'); toggleFullscreen(); });
   $('btn-solo-fs-toggle').addEventListener('click', () => { audio.play('ui'); toggleFullscreen(); });
   syncFsUI();

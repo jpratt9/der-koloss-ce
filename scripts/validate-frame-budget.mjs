@@ -9,6 +9,7 @@
 // answer identical, so this file checks answers, not source text — the text
 // pins live in validate-performance-invariants.mjs.
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { THREE, loadGameModule } from './lib/headless-three.mjs';
 import './lib/headless-map.mjs';
 
@@ -199,6 +200,60 @@ const endOfTask = () => new Promise((resolve) => setTimeout(resolve, 0));
   assert.equal(layoutFlushes, 0, 'firing must not force a layout flush per shot');
   assert.ok(ammo.classList.contains('tick'), 'the ammo tick must be applied');
   assert.match(ammo.innerHTML, /<span class="mag">0<\/span>/, 'the magazine count is still rebuilt');
+
+  // The FPS counter reports once a second and writes only when the number moves.
+  const fps = document.getElementById('fps-counter');
+  let fpsWrites = 0;
+  Object.defineProperty(fps, 'textContent', { get: () => '', set: () => { fpsWrites++; } });
+  for (const value of [60, 60, 60, 59, 59, 60]) hud.setFps(value);
+  assert.equal(fpsWrites, 3, 'the FPS counter must only touch the DOM when the displayed number changes');
+  hud.showFps(true);
+  assert.ok(!fps.classList.contains('hidden'), 'turning the pause-menu option on shows the counter');
+  hud.showFps(false);
+  assert.ok(fps.classList.contains('hidden'), 'turning it off hides the counter');
+}
+
+// ---------------------------------------------------------------------------
+// FPS counter: frames drawn per second, not 1/dt, and only rendered frames
+// ---------------------------------------------------------------------------
+{
+  const reported = [];
+  const g = Object.create(Game.prototype);
+  g.hud = { setFps: (n) => reported.push(n) };
+  let now = 10;
+  for (let i = 0; i < 3 * 60; i++) { g._countFrame(now); now += 1 / 60; }
+  assert.deepEqual(reported, [60, 60], `a steady 60fps must read 60, not 61 (got ${reported})`);
+  reported.length = 0;
+  g._fpsSince = null;
+  for (let i = 0; i < 1.5 * 144; i++) { g._countFrame(now); now += 1 / 144; }
+  assert.deepEqual(reported, [144], `a 144Hz display must read 144 (got ${reported})`);
+}
+
+// ---------------------------------------------------------------------------
+// FPS option wiring: one setting, two controls, off by default
+// ---------------------------------------------------------------------------
+// main.js boots the whole page as soon as it is imported, so its wiring is
+// pinned as text.
+{
+  const [indexHtml, mainSrc] = await Promise.all([
+    readFile(new URL('../index.html', import.meta.url), 'utf8'),
+    readFile(new URL('../js/main.js', import.meta.url), 'utf8'),
+  ]);
+  assert.match(indexHtml, /<div id="fps-counter" class="hidden"/, 'the counter must start hidden');
+  assert.match(indexHtml, /<button id="btn-pause-fps" class="mbtn">/, 'the pause menu must carry the FPS toggle');
+  const video = indexHtml.slice(indexHtml.indexOf('<span>VIDEO</span>'), indexHtml.indexOf('<span>AUDIO</span>'));
+  assert.match(video, /<input id="opt-fps" type="checkbox" \/>/, 'Options > Video must carry the FPS toggle');
+  assert.match(mainSrc, /showFps: false/, 'the counter must be off by default');
+  assert.match(mainSrc, /\$\('opt-fps'\)\.addEventListener\('change', \(e\) => setShowFps\(e\.target\.checked\)\);/,
+    'the Options toggle must go through setShowFps');
+  assert.match(mainSrc, /\$\('btn-pause-fps'\)\.addEventListener\('click', \(\) => \{ audio\.play\('ui'\); setShowFps\(!options\.showFps\); \}\);/,
+    'the pause-menu button must go through setShowFps');
+  const setter = mainSrc.slice(mainSrc.indexOf('function setShowFps('), mainSrc.indexOf('function syncFpsControls('));
+  assert.ok(setter.length > 0, 'setShowFps must exist ahead of syncFpsControls');
+  assert.doesNotMatch(setter, /applyOptions\(\)/,
+    'toggling the counter must not re-apply quality, which rebuilds the post stack mid-match');
+  assert.match(setter, /saveOptions\(options\);[\s\S]*app\.hud\.showFps\(options\.showFps\);[\s\S]*syncFpsControls\(\);/,
+    'the setting must persist, show or hide the counter, and update both controls');
 }
 
 // ---------------------------------------------------------------------------
@@ -347,4 +402,4 @@ function scaler(qualityRatio, startRatio = qualityRatio) {
   assert.equal(bound.at(-1), null, 'a failed prewarm must still unbind the HDR target');
 }
 
-console.log('frame budget OK (slab test and sight lines match the reference, HUD writes and flushes batched, resolution floor and ceiling, hit spheres, viewmodel graph walk, shader prewarm)');
+console.log('frame budget OK (slab test and sight lines match the reference, HUD writes and flushes batched, resolution floor and ceiling, hit spheres, viewmodel graph walk, shader prewarm, FPS counter and its option)');

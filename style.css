@@ -1986,6 +1986,17 @@ img.perk-icon { display: block; object-fit: contain; }
 }
 @keyframes pulse { from { opacity: 0.68; } to { opacity: 1; } }
 
+/* FRAPS-style frame counter: bare yellow digits with a hard black outline, in
+   the strip above the top-right HUD. 2px + 18px ends at 20px, which is where
+   the drop timers (--hud-pad-y is at least 20px) and the co-op roster begin. */
+#fps-counter {
+  position: absolute; top: 2px; right: 8px;
+  font: 700 18px/1 Tahoma, Verdana, sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: #ffff00;
+  text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+}
+
 #wave-progress {
   position: absolute; top: var(--hud-pad-y); left: 50%;
   transform: translateX(-50%);
