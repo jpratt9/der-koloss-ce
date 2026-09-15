@@ -260,6 +260,8 @@ js/                 Game source (ES modules, no bundler)
   map-props.js        Procedural prop placement
   zombies.js          Zombies entry point: re-exports js/zombies/
   zombies/            Horde AI and spawning, corpse and hound bodies, hit volumes, poses
+  player.js           Player entry point: re-exports js/player/
+  player/             Local player movement, co-op soldier avatars
   net.js              Peer-to-peer co-op
   props/              Mystery box, perk machines, Pack-a-Punch, teleporters
   render/             Shaders, post-FX, camera rig, creature shading
