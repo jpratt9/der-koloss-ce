@@ -21,6 +21,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { DOOR_FIT, MAP_DOOR_DEFS, MAP_WALL_RUNS, cappedWallRuns } from '../js/map-layout.js';
+import { readMapSource } from './lib/game-source.mjs';
 
 const EPS = 0.02;   // a plane separation below this is not a separation
 
@@ -86,7 +87,7 @@ assert.doesNotMatch(doorSource, /k\.box\('iron', 0\.22, 3\.16, 0\.34, x, 1\.55, 
 // ---------------------------------------------------------------------------
 // 2 & 3. Source-level invariants in the map builder
 // ---------------------------------------------------------------------------
-const mapSource = await readFile(new URL('../js/map.js', import.meta.url), 'utf8');
+const mapSource = readMapSource();
 
 // The wall builder must sink an elevated run below its authored y0. Flush, an
 // upper run's base plane coincided with the ground run's top AND with the deck

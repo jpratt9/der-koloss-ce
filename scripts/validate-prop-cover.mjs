@@ -15,6 +15,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { THREE, loadGameModule, repoRoot } from './lib/headless-three.mjs';
 import { buildHeadlessMap } from './lib/headless-map.mjs';
+import { readMapSource } from './lib/game-source.mjs';
 
 const { scene, map } = await buildHeadlessMap();
 const { Game } = await loadGameModule('game.js');
@@ -230,7 +231,7 @@ assert.ok(shotStops({ x: -9.1, y: 1.0, z: -29 }, { x: -9.1, y: 1.0, z: -23 }),
 // today — nothing that moves or glows happens to sit inside a prop's box — so
 // only the code shape keeps them from regressing the day something does.
 {
-  const mapSource = await readFile(join(repoRoot, 'js/map.js'), 'utf8');
+  const mapSource = readMapSource();
   const propsSource = await readFile(join(repoRoot, 'js/map-props.js'), 'utf8');
   assert.match(mapSource, /for \(const root of \[\.\.\.doors\.map\(\(d\) => d\.mesh\), \.\.\.barriers\.map\(\(b\) => b\.boardsMesh\), boxG\]\)/,
     'doors, window boards and the mystery box move or vanish after the build, so they must be kept out of cover');

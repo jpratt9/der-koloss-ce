@@ -24,9 +24,9 @@ import {
   platformSideBlocksAtFeet,
   teleporterPromptState,
 } from '../js/map-layout.js';
-import { readFile } from 'node:fs/promises';
+import { readMapSource } from './lib/game-source.mjs';
 
-const mapSource = await readFile(new URL('../js/map.js', import.meta.url), 'utf8');
+const mapSource = readMapSource();
 
 const audit = auditMapEgress();
 assert.equal(audit.ok, true, audit.issues.join('\n'));
