@@ -1,7 +1,7 @@
 // Local player controller (FPS) + remote player avatar rendering.
 import * as THREE from 'three';
 import { CFG } from './config.js';
-import { clamp, lerp, damp, textTexture } from './utils.js';
+import { clamp, lerp, damp, textTexture, installMixins } from './utils.js';
 import { audio } from './audio.js';
 import { buildPerkBottle } from './weapons.js';
 import { PERK_DRINK_TIMELINE, perkDrinkPhase } from './gameplay-rules.js';
@@ -12,14 +12,14 @@ export { LocalPlayer } from './player/local.js';
 import { clone as skClone } from '../vendor/SkeletonUtils.js';
 import { assets } from './assets.js';
 import { measureStandingBounds, measureNeutralBounds } from './zombies.js';
-import { buildDisplayWeapon } from './weapons.js';
-import { mergeGeometries } from '../vendor/utils/BufferGeometryUtils.js';
 import { humaniseSoldierFace } from './render/SoldierFace.js';
 import {
   attachSoldierGear, detachSoldierGear, setSoldierGearLOD,
-  SOLDIER_LOOKS, HEAD_SCALE, HEAD_SHAPE, HAND_SCALE, FOOT_SCALE, LIMB_SHAPE, SPINE_FIX,
+  SOLDIER_LOOKS,
 } from './render/SoldierGear.js';
 import { soldierAtlas } from './player/atlas.js';
+import { SoldierVisualPose } from './player/soldier-pose.js';
+import { SoldierVisualWeapon } from './player/soldier-weapon.js';
 
 // How tall a marine stands, measured on the skinned body with the head brought
 // down to human proportion. Headgear is allowed above this.
@@ -29,182 +29,6 @@ const SOLDIER_HEIGHT = 1.78;
 // any spread at all is a bug rather than variation.
 const SOLDIER_MIN_H = 1.70;
 const SOLDIER_MAX_H = 1.86;
-
-// ---------------------------------------------------------------------------
-// pose helpers
-// ---------------------------------------------------------------------------
-
-const _pv = new THREE.Vector3();
-const _pv2 = new THREE.Vector3();
-const _pv3 = new THREE.Vector3();
-const _pq = new THREE.Quaternion();
-const _pm = new THREE.Matrix4();
-const _bx = new THREE.Vector3();
-const _by = new THREE.Vector3();
-const _bz = new THREE.Vector3();
-const _wm = new THREE.Matrix4();
-
-/**
- * Point a bone's own +Y axis (every joint in this rig runs +Y toward its child)
- * along a world direction, keeping the bone's +Z as close to `ref` as it can.
- * Writes the LOCAL quaternion, so the result still rides the parent.
- */
-function aimBoneY(bone, dirWorld, ref) {
-  _by.copy(dirWorld).normalize();
-  _bz.copy(ref).addScaledVector(_by, -ref.dot(_by));
-  if (_bz.lengthSq() < 1e-8) _bz.set(0, 0, 1).addScaledVector(_by, -_by.z);
-  _bz.normalize();
-  _bx.crossVectors(_by, _bz);
-  _pm.makeBasis(_bx, _by, _bz);
-  _pq.setFromRotationMatrix(_pm);
-  bone.parent.updateWorldMatrix(true, false);
-  bone.quaternion.copy(bone.parent.getWorldQuaternion(new THREE.Quaternion()).invert()).multiply(_pq);
-  bone.updateWorldMatrix(false, false);
-}
-
-/**
- * Two-bone IK, used ONCE at build time to derive the rifle-carry arm pose from
- * hand positions rather than from guessed Euler angles. Solving it means the
- * pose stays correct if the spine correction is ever retuned, which hand-typed
- * angles emphatically would not.
- */
-function solveArm(upper, lower, hand, target, pole, lengths = null) {
-  upper.updateWorldMatrix(true, false);
-  const S = upper.getWorldPosition(new THREE.Vector3());
-  const E0 = lower.getWorldPosition(new THREE.Vector3());
-  const l1 = lengths ? lengths[0] : S.distanceTo(E0);
-  const l2 = lengths ? lengths[1]
-    : E0.distanceTo(hand.getWorldPosition(new THREE.Vector3()));
-  if (l1 < 1e-4 || l2 < 1e-4) return;
-  _pv.copy(target).sub(S);
-  const d = clamp(_pv.length(), Math.abs(l1 - l2) + 1e-3, l1 + l2 - 1e-3);
-  _pv.normalize();
-  const a = (l1 * l1 - l2 * l2 + d * d) / (2 * d);
-  const h = Math.sqrt(Math.max(0, l1 * l1 - a * a));
-  _pv2.copy(pole).sub(S);
-  _pv2.addScaledVector(_pv, -_pv2.dot(_pv));
-  if (_pv2.lengthSq() < 1e-8) _pv2.set(0, -1, 0).addScaledVector(_pv, -(-_pv.y));
-  _pv2.normalize();
-  const E = new THREE.Vector3().copy(S).addScaledVector(_pv, a).addScaledVector(_pv2, h);
-  aimBoneY(upper, _pv3.copy(E).sub(S), _pv2);
-  aimBoneY(lower, _pv3.copy(target).sub(E), _pv2);
-}
-
-/**
- * Collapse a built weapon into one mesh per material.
- *
- * The viewmodels are assembled from sixty-odd individually placed parts, which
- * is exactly right in the player's own hands — the rig animates the bolt, the
- * magazine, the charging handle. On a teammate across the room none of that
- * moves and none of it is legible, so it is sixty-odd draw calls for nothing:
- * three armed teammates cost more than the entire rest of the frame. Flattened
- * once at build time and cached, a held weapon costs a handful of calls.
- *
- * The muzzle anchor is re-created afterwards, because remote fire effects are
- * placed on it and it must survive the flatten.
- */
-function flattenWeapon(group) {
-  group.updateMatrixWorld(true);
-  const inv = new THREE.Matrix4().copy(group.matrixWorld).invert();
-  const muzzle = group.userData.muzzle;
-  let muzzleLocal = null;
-  if (muzzle) {
-    muzzle.updateWorldMatrix(true, false);
-    muzzleLocal = new THREE.Vector3().setFromMatrixPosition(muzzle.matrixWorld).applyMatrix4(inv);
-  }
-  const byMaterial = new Map();
-  const keep = [];
-  group.traverse((o) => {
-    if (!o.isMesh || !o.geometry) return;
-    if (Array.isArray(o.material)) { keep.push(o); return; }   // rare; leave alone
-    const geo = o.geometry.clone();
-    geo.applyMatrix4(_wm.multiplyMatrices(inv, o.matrixWorld));
-    let list = byMaterial.get(o.material);
-    if (!list) { list = []; byMaterial.set(o.material, list); }
-    list.push(geo);
-  });
-  const out = new THREE.Group();
-  out.userData = { ...group.userData };
-  for (const [material, list] of byMaterial) {
-    // mergeGeometries refuses a set whose attributes differ, so reduce every
-    // member to the attributes they all share before merging.
-    let common = null;
-    for (const g of list) {
-      const names = new Set(Object.keys(g.attributes));
-      common = common ? new Set([...common].filter((n) => names.has(n))) : names;
-    }
-    for (const g of list) {
-      for (const name of Object.keys(g.attributes)) if (!common.has(name)) g.deleteAttribute(name);
-      if (g.index && !list.every((x) => x.index)) g.setIndex(null);
-    }
-    const merged = list.length === 1 ? list[0] : mergeGeometries(list, false);
-    if (list.length > 1) for (const g of list) g.dispose();
-    if (!merged) continue;
-    const mesh = new THREE.Mesh(merged, material);
-    mesh.castShadow = true;
-    mesh.frustumCulled = false;
-    out.add(mesh);
-  }
-  for (const o of keep) out.add(o);
-  if (muzzleLocal) {
-    const anchor = new THREE.Object3D();
-    anchor.position.copy(muzzleLocal);
-    out.add(anchor);
-    out.userData.muzzle = anchor;
-  }
-  return out;
-}
-
-/** Rotate about the bone's own X axis, which is the world X axis at rest for
- *  every bone this is used on (the spine and the legs). */
-function tiltX(bone, radians) {
-  if (bone && radians) bone.rotateX(radians);
-}
-
-/**
- * How far the pelvis is lifted out of the shipped rig's permanent half-crouch,
- * in the skeleton's own root units (so it survives both height calibrations).
- * The legs are IK'd back down onto the clip's foot bones afterwards.
- */
-const HIP_LIFT = 0.100;
-
-/**
- * Leg proportions. The shipped rig is built to cartoon proportions — short
- * legs under a long broad torso, which is most of what reads as "toy soldier"
- * once the figure is standing upright.
- *
- * The thigh is lengthened by MOVING THE KNEE BONE, not by scaling it: a
- * non-uniform scale on a parent shears every rotated child below it, and the
- * knee is rotated in every frame of every locomotion clip. The ankle is then
- * dropped by the matching amount, and because the legs are IK'd onto the
- * ankles the shin follows and the foot still plants where the animator put it.
- */
-const LEG_STRETCH = 1.45;       // multiplies the hip-to-knee bone offset
-const FOOT_DROP = 0.190;        // root-space units the ankle is lowered by
-
-const _footTarget = new THREE.Vector3();
-const _kneePole = new THREE.Vector3();
-
-/** The knuckle joints — scaling these scales the whole digit. */
-const FINGER_ROOTS = [];
-/** Every finger joint, both hands. Curled into a fist at build time. */
-const FINGER_BONES = [];
-for (const side of ['L', 'R']) {
-  for (const digit of ['Index', 'Middle', 'Pinky', 'Thumb']) FINGER_ROOTS.push(`${digit}1${side}`);
-  for (const digit of ['Index', 'Middle', 'Pinky']) {
-    for (let j = 1; j <= 3; j++) FINGER_BONES.push(`${digit}${j}${side}`);
-  }
-  for (let j = 1; j <= 2; j++) FINGER_BONES.push(`Thumb${j}${side}`);
-}
-
-/** Every bone SoldierVisual writes to. Their pure clip rotations are cached
- *  each frame and put back before the next mixer update — see _applyRig. */
-const POSED_BONES = [
-  'Hips', 'Abdomen', 'Torso', 'Neck', 'Head',
-  'UpperLegL', 'UpperLegR', 'LowerLegL', 'LowerLegR',
-  'UpperArmL', 'UpperArmR', 'LowerArmL', 'LowerArmR',
-  ...FINGER_BONES,
-];
 
 export class SoldierVisual {
   constructor(variant = 0, { gear = true } = {}) {
@@ -388,131 +212,6 @@ export class SoldierVisual {
     return { h: bb.max.y - bb.min.y, minY: bb.min.y };
   }
 
-  _buildArmPose() {
-    const B = this.bones;
-    const need = ['UpperArmL', 'LowerArmL', 'Middle1L', 'UpperArmR', 'LowerArmR', 'Middle1R', 'Torso', 'Neck'];
-    if (!need.every((n) => B[n])) return;
-    B.Torso.updateWorldMatrix(true, false);
-    const chest = B.Neck.getWorldPosition(new THREE.Vector3());
-    // Both hands forward of the chest, right on the grip and left across on
-    // the fore-end — the low-ready every rifleman in the period photographs
-    // stands in, and the pose the weapon mount below is aligned to.
-    const rightHand = new THREE.Vector3(chest.x - 0.17, chest.y - 0.30, chest.z + 0.20);
-    const leftHand = new THREE.Vector3(chest.x + 0.06, chest.y - 0.24, chest.z + 0.40);
-    const poleR = new THREE.Vector3(chest.x - 0.62, chest.y - 0.72, chest.z - 0.10);
-    const poleL = new THREE.Vector3(chest.x + 0.62, chest.y - 0.68, chest.z - 0.10);
-    solveArm(B.UpperArmR, B.LowerArmR, B.Middle1R, rightHand, poleR);
-    solveArm(B.UpperArmL, B.LowerArmL, B.Middle1L, leftHand, poleL);
-    this.armPose = {
-      UpperArmR: B.UpperArmR.quaternion.clone(),
-      LowerArmR: B.LowerArmR.quaternion.clone(),
-      UpperArmL: B.UpperArmL.quaternion.clone(),
-      LowerArmL: B.LowerArmL.quaternion.clone(),
-    };
-    // Close the hands. The shipped rig's fingers are splayed open like claws,
-    // which is right for a corpse reaching for you and completely wrong for a
-    // man holding a rifle — it was the single loudest remaining zombie tell.
-    // Curling them costs nothing: the finger bones are already in the rig.
-    for (const s of ['L', 'R']) {
-      for (const digit of ['Index', 'Middle', 'Pinky']) {
-        for (let j = 1; j <= 3; j++) {
-          const bone = B[`${digit}${j}${s}`];
-          if (bone) bone.rotateX(j === 1 ? 1.05 : 1.25);
-        }
-      }
-      for (let j = 1; j <= 2; j++) {
-        const bone = B[`Thumb${j}${s}`];
-        if (bone) bone.rotateX(j === 1 ? 0.45 : 0.75);
-      }
-    }
-    this.handPose = {};
-    for (const name of FINGER_BONES) {
-      if (B[name]) this.handPose[name] = B[name].quaternion.clone();
-    }
-  }
-
-  _buildWeaponMount() {
-    const fore = this.bones?.LowerArmR;
-    const hand = this.bones?.Middle1R;
-    if (!fore || !hand) return;
-    const anchor = new THREE.Object3D();
-    anchor.position.copy(hand.position);       // the hand joint, in forearm space
-    fore.updateWorldMatrix(true, false);
-    // The viewmodels are authored with the bore down -Z; the avatar faces +Z.
-    const want = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
-    anchor.quaternion.copy(fore.getWorldQuaternion(new THREE.Quaternion()).invert()).multiply(want);
-    fore.add(anchor);
-    // A separate node carries aim pitch, so the weapon can lead the spine
-    // without the spine correction having to fight it.
-    const pitchNode = new THREE.Object3D();
-    anchor.add(pitchNode);
-    this.weaponAnchor = anchor;
-    this.weaponPitch = pitchNode;
-    this.weaponGroup = null;
-    this.weaponId = null;
-    this.weaponPap = null;
-    this.muzzle = null;
-  }
-
-  /**
-   * Show the weapon the player is actually carrying.
-   *
-   * Uses buildDisplayWeapon, which is the hands-free build — a viewmodel would
-   * drag first-person gloves into the world and put a second pair of hands on
-   * every teammate. Cached per id+PaP so swapping back and forth is free.
-   */
-  setWeapon(id, pap = false) {
-    if (!this.weaponPitch) return;
-    if (this.weaponId === id && this.weaponPap === !!pap) return;
-    if (this.weaponGroup) this.weaponPitch.remove(this.weaponGroup);
-    this.weaponId = id;
-    this.weaponPap = !!pap;
-    this.muzzle = null;
-    this.weaponGroup = null;
-    if (!id) return;
-    this._weaponCache = this._weaponCache || new Map();
-    const key = id + (pap ? '+' : '');
-    let g = this._weaponCache.get(key);
-    if (!g) {
-      try { g = buildDisplayWeapon(id, !!pap); } catch (e) { g = null; }
-      if (!g) return;
-      // buildDisplayWeapon presents the gun broadside on a rack. Undo that:
-      // held weapons want their own authored metres and their own axes.
-      const view = g.userData.viewNode;
-      if (view) { view.position.set(0, 0, 0); view.rotation.set(0, 0, 0); view.scale.setScalar(1); }
-      g = flattenWeapon(g);
-      // Sit the grip in the fist. Authored viewmodels put the trigger group
-      // near the origin, so the offset is small and the same for every class;
-      // the long guns only need dropping a little to clear the forearm.
-      // The anchor's +Z runs backwards in world (the weapon's bore is -Z and
-      // the avatar faces +Z), so a positive `back` pulls the gun in toward the
-      // body. Long guns need more of it than a pistol to keep the receiver in
-      // the fist rather than out past the fingertips.
-      const cls = g.userData.cls || 'rifle';
-      const drop = cls === 'pistol' ? -0.005 : -0.02;
-      const back = cls === 'pistol' ? 0.0 : 0.15;
-      g.position.set(0, drop, back);
-      this._weaponCache.set(key, g);
-    }
-    if (g.parent) g.parent.remove(g);
-    this.weaponPitch.add(g);
-    this.weaponGroup = g;
-    this.muzzle = g.userData?.muzzle || null;
-  }
-
-  /** World position of the equipped weapon's muzzle, for remote fire effects. */
-  muzzleWorld(out = new THREE.Vector3()) {
-    if (this.muzzle) {
-      this.muzzle.updateWorldMatrix(true, false);
-      return out.setFromMatrixPosition(this.muzzle.matrixWorld);
-    }
-    if (this.weaponAnchor) {
-      this.weaponAnchor.updateWorldMatrix(true, false);
-      return out.setFromMatrixPosition(this.weaponAnchor.matrixWorld);
-    }
-    return out.set(0, 0, 0);
-  }
-
   /** Aim pitch in radians, positive looking up. */
   setAim(pitch) { this.aimPitch = clamp(pitch || 0, -1.3, 1.3); }
 
@@ -545,138 +244,6 @@ export class SoldierVisual {
     // The carry pose is a lie during a death, a crawl or a melee — those clips
     // need their arms. Everything else keeps the rifle up.
     this._armTarget = /Death|Crawl|HitReact|Punch|Wave|Jump/.test(name) ? 0 : 1;
-  }
-
-  /**
-   * Re-apply every correction the animation overwrote.
-   *
-   * THE TRAP: it is not enough that every clip here keys every bone.
-   * three's PropertyMixer only writes a bone when the value it just
-   * accumulated differs from the value it wrote last time. Post-multiply an
-   * offset onto a bone whose clip value happens to be momentarily still — the
-   * chest during an idle, say — and the mixer sees "no change", skips the
-   * write, and the offset lands on top of the previous frame's offset. Within
-   * a couple of seconds the spine has rolled through 180 degrees.
-   *
-   * So the pure clip pose is snapshotted here and restored in update() before
-   * the mixer next runs. That keeps the mixer's change detection honest while
-   * still letting the clip drive every one of these bones.
-   */
-  _applyRig(dt, armWeight) {
-    const B = this.bones;
-    if (!B) return;
-    const clip = this._clipQ || (this._clipQ = {});
-    for (const name of POSED_BONES) {
-      const b = B[name];
-      if (!b) continue;
-      (clip[name] || (clip[name] = new THREE.Quaternion())).copy(b.quaternion);
-    }
-    // The pelvis carries root motion, so its position is cached and restored
-    // for exactly the same reason the rotations are.
-    // Ankles are keyed by the locomotion clips, so their offsets are cached and
-    // restored exactly like the rotations are.
-    for (const s of ['L', 'R']) {
-      const foot = B['Foot' + s];
-      if (!foot) continue;
-      (this._clipFootY ??= {})[s] = foot.position.y;
-      foot.position.y -= FOOT_DROP;
-    }
-    // The knee offset is a constant set, so it cannot accumulate whether the
-    // mixer writes it or not.
-    if (this._restKneeY) {
-      for (const s of ['L', 'R']) {
-        const knee = B['LowerLeg' + s];
-        if (knee) knee.position.y = this._restKneeY * LEG_STRETCH;
-      }
-    }
-    if (B.Body) {
-      (this._clipBodyY ??= { y: 0 }).y = B.Body.position.y;
-      // Stand him up out of the corpse's permanent half-crouch. The legs are
-      // then IK'd back down onto the clip's own footfalls below, so the feet
-      // still land where the animator put them — they just do it on straighter
-      // legs, which is most of the difference between a marine and a gnome.
-      B.Body.position.y += HIP_LIFT;
-    }
-    if (B.Head) B.Head.scale.set(HEAD_SCALE * HEAD_SHAPE[0], HEAD_SCALE * HEAD_SHAPE[1], HEAD_SCALE * HEAD_SHAPE[2]);
-    for (const name in LIMB_SHAPE) {
-      const b = B[name];
-      if (b) b.scale.set(LIMB_SHAPE[name][0], LIMB_SHAPE[name][1], LIMB_SHAPE[name][2]);
-    }
-    for (const name of FINGER_ROOTS) {
-      const b = B[name];
-      if (b) b.scale.setScalar(HAND_SCALE);
-    }
-    // The tongue is its own five-bone chain and it hangs out of the mouth. No
-    // amount of reshaping the head geometry touches it, and a marine with his
-    // tongue lolling is not a marine. Collapsing the root collapses the chain.
-    if (B.Tongue1) B.Tongue1.scale.setScalar(0.001);
-    for (const s of ['L', 'R']) {
-      const foot = B['Foot' + s];
-      if (foot) foot.scale.setScalar(FOOT_SCALE);
-    }
-    // Posture: undo the shamble.
-    tiltX(B.Abdomen, SPINE_FIX.Abdomen);
-    tiltX(B.Torso, SPINE_FIX.Torso);
-    tiltX(B.Neck, SPINE_FIX.Neck);
-    tiltX(B.Head, SPINE_FIX.Head);
-    // Aim: a teammate shooting at the catwalk should visibly be looking up.
-    // Split down the chain so the whole upper body leads the shot.
-    const p = this.aimPitch;
-    if (p) {
-      tiltX(B.Abdomen, -p * 0.10);
-      tiltX(B.Torso, -p * 0.32);
-      tiltX(B.Neck, -p * 0.30);
-      tiltX(B.Head, -p * 0.28);
-    }
-    // Crouch: bend at the hip and knee rather than squashing the model, which
-    // is what the old scale.y trick did and why crouching teammates looked
-    // like they were being stood on.
-    const c = this.crouch;
-    if (c > 0.01) {
-      tiltX(B.Hips, c * 0.30);
-      tiltX(B.Torso, -c * 0.16);
-      for (const s of ['L', 'R']) {
-        tiltX(B['UpperLeg' + s], c * 0.55);
-        tiltX(B['LowerLeg' + s], -c * 0.95);
-      }
-    }
-    // Rifle carry, blended so a dying man drops his arms.
-    if (this.armPose && armWeight > 0.001) {
-      for (const name in this.armPose) {
-        const bone = B[name];
-        if (bone) bone.quaternion.slerp(this.armPose[name], armWeight);
-      }
-    }
-    // Fists stay closed a little longer than the arms do — a hand only opens
-    // when he is genuinely letting go.
-    if (this.handPose) {
-      const w = Math.max(armWeight, 0.55);
-      for (const name in this.handPose) {
-        const bone = B[name];
-        if (bone) bone.quaternion.slerp(this.handPose[name], w);
-      }
-    }
-    // Legs last: the hips have moved, so re-solve knee and ankle to put the
-    // feet back exactly where the clip's own foot bones are. Skipped while
-    // crawling or dead, where the clip owns the whole body.
-    if (this.legLengths && armWeight > 0.5) {
-      this.inner.updateMatrixWorld(true);
-      for (const s of ['L', 'R']) {
-        const upper = B['UpperLeg' + s], lower = B['LowerLeg' + s], foot = B['Foot' + s];
-        if (!upper || !lower || !foot) continue;
-        foot.updateWorldMatrix(true, false);
-        _footTarget.setFromMatrixPosition(foot.matrixWorld);
-        upper.updateWorldMatrix(true, false);
-        // Knees point forward, always. Without a pole the solver is free to
-        // fold the leg sideways and occasionally does.
-        _kneePole.setFromMatrixPosition(upper.matrixWorld);
-        _kneePole.z += 2.0;
-        _kneePole.y -= 0.6;
-        solveArm(upper, lower, null, _footTarget, _kneePole, this.legLengths);
-      }
-    }
-    // The weapon leads the rest of the aim the spine did not take.
-    if (this.weaponPitch) this.weaponPitch.rotation.x = this.aimPitch * 0.30 * armWeight;
   }
 
   update(dt) {
@@ -714,6 +281,11 @@ export class SoldierVisual {
     this.mixer.uncacheRoot(this.inner);
   }
 }
+
+// SoldierVisual's pose layer and its held weapon are in js/player/soldier-*.js.
+// Each file is a class whose methods are copied onto SoldierVisual.prototype
+// here, as ZombieManager's are; a name defined twice fails at load.
+installMixins(SoldierVisual, [SoldierVisualPose, SoldierVisualWeapon]);
 
 export class RemotePlayer {
   constructor(scene, info) {
