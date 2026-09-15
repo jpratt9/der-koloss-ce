@@ -258,7 +258,8 @@ js/                 Game source (ES modules, no bundler)
   weapons/            The 31-weapon catalog, view-model builders, finishes, first-person rig
   map.js              Factory layout and geometry
   map-props.js        Procedural prop placement
-  zombies.js          Spawn director and horde AI
+  zombies.js          Zombies entry point: re-exports js/zombies/
+  zombies/            Horde AI and spawning, corpse and hound bodies, hit volumes, poses
   net.js              Peer-to-peer co-op
   props/              Mystery box, perk machines, Pack-a-Punch, teleporters
   render/             Shaders, post-FX, camera rig, creature shading
