@@ -7,9 +7,10 @@ import { buildHellhound, HOUND_VARIANTS } from '../render/HellhoundModel.js';
 import { ZombieVisual } from './visual.js';
 
 // ---------- procedural hellhound ----------
-// The hound's geometry, materials and rig live in render/HellhoundModel.js:
-// it is a merged, bone-parented build shared across every instance, so a pack
-// of eight costs a handful of draw calls instead of ~90 loose meshes each.
+// The hound's geometry, materials and rig live in render/HellhoundModel.js and
+// render/HellhoundModel/: it is a merged, bone-parented build shared across
+// every instance, so a pack of eight costs a handful of draw calls instead of
+// ~90 loose meshes each.
 const fallbackZombieClothMat = new THREE.MeshStandardMaterial({ color: 0x444b4d, roughness: 1 });
 const fallbackZombieSkinMat = new THREE.MeshStandardMaterial({ color: 0x879078, roughness: 1 });
 
