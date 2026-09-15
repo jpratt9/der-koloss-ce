@@ -26,69 +26,13 @@
 //
 // Coordinate frame: +X is the nose, +Y is up, +Z is the animal's left. Metres.
 import * as THREE from 'three';
-import { mergeGeometries } from '../../vendor/utils/BufferGeometryUtils.js';
-import { enhanceCreatureMaterial } from './CreatureShading.js';
+import { houndMaterials } from './HellhoundModel/materials.js';
+import { spike, ribbon, placed, pack } from './HellhoundModel/primitives.js';
+
+export { houndMaterials };
 
 /** Distinct builds, so a pack of eight never reads as one model duplicated. */
 export const HOUND_VARIANTS = 5;
-
-// ---------------------------------------------------------------------------
-// materials — shared by every hound in the process
-// ---------------------------------------------------------------------------
-let _mats = null;
-export function houndMaterials() {
-  if (_mats) return _mats;
-  // Charcoal, not black — and remember that enhanceCreatureMaterial MULTIPLIES
-  // this by its tint pair. The old hound set both the colour and the tints near
-  // black, so the product was effectively zero: every value you could see on
-  // the animal came from the additive rim, which is exactly why a pack read as
-  // eight identical flat orange cut-outs with no form. Keep the tints close to
-  // neutral and let this colour be the charcoal.
-  const hide = new THREE.MeshStandardMaterial({ color: 0x3d332c, roughness: 0.95, metalness: 0.0 });
-  // Ember channels sit above the bloom threshold so they bleed light in the
-  // HDR stack — but only just. Pushed harder they clip to flat yellow and stop
-  // reading as heat inside a body.
-  const ember = new THREE.MeshStandardMaterial({
-    color: 0x2a0c04, emissive: 0xff4a12, emissiveIntensity: 4.2,
-    roughness: 0.7, toneMapped: false,
-  });
-  // Hotter and much smaller than the fissures: the eyes and the back of the
-  // throat are the two things a player tracks across a dark room.
-  const eye = new THREE.MeshStandardMaterial({
-    color: 0x140200, emissive: 0xffb43a, emissiveIntensity: 5.5, toneMapped: false,
-  });
-  const gullet = new THREE.MeshStandardMaterial({
-    color: 0x2a0a02, emissive: 0xff5a10, emissiveIntensity: 2.6, toneMapped: false,
-  });
-  // Scorched bone: ribs, vertebrae, fangs, claws. Dirty and warm, never white —
-  // bright bone on a black animal reads as beads glued to the spine.
-  const bone = new THREE.MeshStandardMaterial({ color: 0x776b57, roughness: 0.6, metalness: 0.0 });
-
-  // The hounds are lit by what is burning inside them, so their rim is ember
-  // coloured rather than the moon-blue the zombies use.
-  //
-  // The rim is added AFTER tone mapping, so its strength is in display units:
-  // the old 1.9 clipped the whole animal to white under any nearby light and
-  // was the reason a pack read as pale blobs. Kept low enough that it only
-  // catches the silhouette edge.
-  enhanceCreatureMaterial(hide, {
-    rimColor: 0xff7a2c, rimStrength: 0.22, rimPower: 3.4,
-    wrap: 0.45, sssColor: 0xff3a08, sssStrength: 0.15,
-    fleshScale: 13.0, fleshAmount: 0.55, grime: 0.7, wet: 0.08,
-    tintA: 0xc9c1b8, tintB: 0x9a938b, tintMix: 0.45,
-  });
-  enhanceCreatureMaterial(bone, {
-    rimColor: 0xffa060, rimStrength: 0.2, rimPower: 3.6,
-    wrap: 0.35, sssColor: 0xff5a20, sssStrength: 0.1,
-    fleshScale: 9.0, fleshAmount: 0.5, grime: 0.75, wet: 0.06,
-    tintA: 0xd6cec2, tintB: 0xa79f93, tintMix: 0.5,
-  });
-  _mats = { hide, ember, eye, gullet, bone };
-  return _mats;
-}
-
-/** Material slot order used by every merged geometry in this file. */
-const SLOTS = ['hide', 'ember', 'bone', 'eye', 'gullet'];
 
 // ---------------------------------------------------------------------------
 // deterministic RNG — a given variant index always builds the same hound
@@ -161,10 +105,6 @@ function bodySurface(u, a, out = 0) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// primitive builders
-// ---------------------------------------------------------------------------
-
 /** Swept tube through the station table, capped at both ends. */
 function bodyTube(sides = 12, u0 = 0, u1 = BODY.length - 1, steps = 22, jitter = null) {
   const pos = [], idx = [];
@@ -205,16 +145,6 @@ function bodyTube(sides = 12, u0 = 0, u1 = BODY.length - 1, steps = 22, jitter =
   return g;
 }
 
-/**
- * A tapered cone-ish spike along +Y, origin at its base.
- * Used for every fur tuft, hackle, ear and fang in the model.
- */
-function spike(len, r0, r1 = 0, sides = 4) {
-  const g = new THREE.CylinderGeometry(r1, r0, len, sides, 1, r1 <= 0.0001);
-  g.translate(0, len / 2, 0);
-  return g;
-}
-
 /** A tapered limb segment along -Y, origin at the joint. */
 function limb(len, rTop, rBot, depthTop, depthBot, sides = 6) {
   const g = new THREE.CylinderGeometry(rTop, rBot, len, sides, 1);
@@ -229,85 +159,6 @@ function limb(len, rTop, rBot, depthTop, depthBot, sides = 6) {
   }
   g.computeVertexNormals();
   return g;
-}
-
-/**
- * A ribbon that follows a list of points — the shape a crack in a burnt hide
- * actually has. Tapers to nothing at both ends so it never reads as a decal
- * with hard corners.
- */
-function ribbon(points, width, up = new THREE.Vector3(0, 1, 0), normals = null) {
-  const n = points.length;
-  if (n < 2) return null;
-  const pos = [], idx = [];
-  const dir = new THREE.Vector3(), side = new THREE.Vector3();
-  for (let i = 0; i < n; i++) {
-    const p = points[i];
-    const a = points[Math.max(0, i - 1)], b = points[Math.min(n - 1, i + 1)];
-    dir.copy(b).sub(a).normalize();
-    // Widening across the SURFACE normal is what keeps a crack lying in the
-    // hide. Widening across world up leaves it standing off the body as a
-    // blade whenever the body curves away, which is exactly how the first
-    // pass grew 30 cm orange shards off the shoulder.
-    side.copy(dir).cross(normals ? normals[i] : up);
-    if (side.lengthSq() < 1e-8) side.set(0, 0, 1); else side.normalize();
-    if (!Number.isFinite(side.x)) side.set(0, 0, 1);
-    const t = i / (n - 1);
-    const w = width * Math.sin(Math.min(1, Math.max(0, t)) * Math.PI) ** 0.55;
-    pos.push(p.x - side.x * w, p.y - side.y * w, p.z - side.z * w);
-    pos.push(p.x + side.x * w, p.y + side.y * w, p.z + side.z * w);
-  }
-  for (let i = 0; i < n - 1; i++) {
-    const a = i * 2, b = i * 2 + 1, c = i * 2 + 2, d = i * 2 + 3;
-    idx.push(a, c, d, a, d, b);
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setIndex(idx);
-  g.computeVertexNormals();
-  return g;
-}
-
-function placed(geo, x, y, z, rx = 0, ry = 0, rz = 0, sx = 1, sy = sx, sz = sx) {
-  geo.applyMatrix4(new THREE.Matrix4().compose(
-    new THREE.Vector3(x, y, z),
-    new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)),
-    new THREE.Vector3(sx, sy, sz),
-  ));
-  return geo;
-}
-
-/**
- * Merge a {slot: [geometry, ...]} bag into ONE geometry with one material
- * group per slot, plus the matching material list. This is where the draw-call
- * saving comes from: everything riding a bone becomes a single object.
- */
-function pack(bag) {
-  const keys = SLOTS.filter((k) => bag[k]?.length);
-  if (!keys.length) return null;
-  const per = keys.map((k) => {
-    // Position and normal only. The creature shader samples its detail
-    // triplanarly in world space, so nothing here needs UVs — and mixing
-    // UV'd primitives with hand-built geometry is what makes a merge fail.
-    for (const g of bag[k]) {
-      g.deleteAttribute('uv');
-      g.deleteAttribute('uv1');
-      g.deleteAttribute('uv2');
-      if (!g.attributes.normal) g.computeVertexNormals();
-      if (!g.index) {
-        const n = g.attributes.position.count;
-        g.setIndex(Array.from({ length: n }, (_, i) => i));
-      }
-    }
-    const merged = mergeGeometries(bag[k], false);
-    for (const g of bag[k]) g.dispose();
-    return merged;
-  }).filter(Boolean);
-  if (!per.length) return null;
-  if (per.length === 1) return { geo: per[0], slots: [keys[0]] };
-  const merged = mergeGeometries(per, true);
-  for (const g of per) g.dispose();
-  return merged ? { geo: merged, slots: keys } : null;
 }
 
 // ---------------------------------------------------------------------------
