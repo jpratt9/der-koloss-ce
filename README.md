@@ -266,7 +266,8 @@ js/                 Game source (ES modules, no bundler)
   net.js              Peer-to-peer co-op
   props/              Mystery box, perk machines, Pack-a-Punch, teleporters
   render/             Shaders, post-FX, camera rig, creature shading
-  audio/              Mixing, occlusion, ambience, impulse responses
+  audio.js            Audio entry point: engine setup and teardown
+  audio/              Engine methods (listener, playback, weapons, fallbacks, music), mixing, occlusion, ambience, impulse responses
 vendor/             Three.js, PeerJS, GLTFLoader (vendored, unmodified)
 assets/             Audio, models, textures, fonts, portraits
 scripts/            27 headless validators
