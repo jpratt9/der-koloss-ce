@@ -254,7 +254,8 @@ js/                 Game source (ES modules, no bundler)
   game.js             Engine core: setup, frame loop, exit
   game/               Engine by domain: combat, rounds, interactions, box, Pack-a-Punch, co-op
   main.js             Menu, lobby, boot
-  weapons.js          The 31-weapon catalog
+  weapons.js          Weapons entry point: re-exports js/weapons/
+  weapons/            The 31-weapon catalog, view-model builders, finishes, first-person rig
   map.js              Factory layout and geometry
   map-props.js        Procedural prop placement
   zombies.js          Spawn director and horde AI
