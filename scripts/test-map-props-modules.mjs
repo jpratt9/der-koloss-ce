@@ -48,12 +48,12 @@ const builders = check(entrySource);
 assert.equal(builders, files.length, `each module in js/map-props/ must export one builder the check can read, found ${builders}`);
 
 // The check has to reject what it exists to catch.
-const make = /makePropBuilders\(\{[^}]*\}\);/.exec(entrySource)?.[0];
-assert.ok(make, 'js/map-props.js must call makePropBuilders()');
-assert.throws(() => check(entrySource.replace(make, make.replace(' pick,', ''))),
-  /must pass makePropBuilders\(\) exactly the names/, 'a call that leaves a name out must fail');
-assert.throws(() => check(entrySource.replace(make, make.replace(' lights,', ' lights: animated,'))),
-  /must pass makePropBuilders\(\) exactly the names/, 'a name passed under another name must fail');
+const placement = /placeDressing\(\{[^}]*\}\);/.exec(entrySource)?.[0];
+assert.ok(placement, 'js/map-props.js must call placeDressing()');
+assert.throws(() => check(entrySource.replace(placement, placement.replace(' DRUM_HOOP_R,', ''))),
+  /must pass placeDressing\(\) exactly the names/, 'a call that leaves out DRUM_HOOP_R, whose absence would not throw, must fail');
+assert.throws(() => check(entrySource.replace(placement, placement.replace(' drum,', ' drum: crate,'))),
+  /must pass placeDressing\(\) exactly the names/, 'a name passed under another name must fail');
 assert.throws(() => check(entrySource.replace('} = makePropBuilders(', '  tarp,\n  } = makePropBuilders(')),
   /does not return tarp/, 'a destructured name the builder does not return must fail');
 

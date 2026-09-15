@@ -259,7 +259,8 @@ js/                 Game source (ES modules, no bundler)
   weapons/            The 31-weapon catalog, view-model builders, finishes, first-person rig
   map.js              Map entry point: builds js/map/ in order, runs the map
   map/                Map sections: surfaces, shell, stairs, doors, props, machines, lights, signage
-  map-props.js        Procedural prop placement
+  map-props.js        Prop dressing entry point: shared kit, merge, practical lights
+  map-props/          Prop builders; placement by room, and the hero set pieces
   zombies.js          Zombies entry point: re-exports js/zombies/
   zombies/            Horde AI and spawning, corpse and hound bodies, hit volumes, poses
   player.js           Player entry point: re-exports js/player/
