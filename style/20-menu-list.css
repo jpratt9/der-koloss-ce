@@ -1,0 +1,202 @@
+/* Part of style.css. index.html links style.css, then the files in style/ in name order, and that order is the cascade. */
+/* ---- menu list ---- */
+.menu-buttons {
+  display: flex; flex-direction: column; gap: clamp(0px, 0.25vh, 3px);
+  margin-top: clamp(14px, 3.6vh, 46px);
+  width: min(520px, 100%);
+  border-left: 1px solid var(--edge-soft);
+}
+.menu-link { display: block; text-decoration: none; }
+.menu-more-wrap { position: relative; }
+.menu-more-wrap > .mbtn { width: 100%; }
+
+#menu .menu-buttons .mbtn {
+  display: flex; align-items: center;
+  width: 100%;
+  min-height: clamp(34px, 5.2vh, 48px);
+  padding: clamp(5px, 0.9vh, 12px) 18px clamp(5px, 0.9vh, 12px) clamp(46px, 4.4vw, 62px);
+  font-size: clamp(14px, min(1.5vw, 2.45vh), 21px);
+  letter-spacing: clamp(2px, 0.4vw, 4px);
+  text-align: left;
+  color: #a3b1c2;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
+  /* the wash is always mounted at zero width, so hover floods it in from the
+     selection rail instead of cross-fading a flat block of colour in place */
+  background-color: transparent;
+  background-image: linear-gradient(90deg, rgba(255, 180, 84, 0.15), rgba(255, 180, 84, 0.035) 44%, transparent 72%);
+  background-repeat: no-repeat;
+  background-size: 0% 100%;
+  border: 0;
+  border-radius: 0;
+  box-shadow: inset 2px 0 0 transparent;
+  transition:
+    color var(--dur-2) var(--ease-out),
+    box-shadow var(--dur-2) var(--ease-out),
+    background-size var(--dur-3) var(--ease-out),
+    transform var(--dur-2) var(--ease-out);
+  animation: menuItemIn 460ms var(--ease-out) both;
+}
+@keyframes menuItemIn {
+  from { opacity: 0; transform: translate3d(-14px, 0, 0); }
+  to   { opacity: 1; transform: none; }
+}
+.menu-buttons > *:nth-child(1) .mbtn, .menu-buttons > .mbtn:nth-child(1) { animation-delay: 300ms; }
+.menu-buttons > *:nth-child(2) .mbtn, .menu-buttons > .mbtn:nth-child(2) { animation-delay: 355ms; }
+.menu-buttons > *:nth-child(3) .mbtn, .menu-buttons > .mbtn:nth-child(3) { animation-delay: 410ms; }
+.menu-buttons > *:nth-child(4) .mbtn, .menu-buttons > .mbtn:nth-child(4) { animation-delay: 465ms; }
+.menu-buttons > *:nth-child(5) .mbtn, .menu-buttons > .mbtn:nth-child(5) { animation-delay: 520ms; }
+.menu-buttons > *:nth-child(6) .mbtn, .menu-buttons > .mbtn:nth-child(6) { animation-delay: 575ms; }
+.menu-buttons > *:nth-child(7) .mbtn, .menu-buttons > .mbtn:nth-child(7) { animation-delay: 630ms; }
+
+/* index number doubles as the selection marker */
+#menu .menu-buttons .mbtn::before {
+  content: attr(data-idx);
+  position: absolute; left: clamp(14px, 1.5vw, 22px); top: 50%;
+  transform: translateY(-50%);
+  font-size: var(--t-2xs);
+  letter-spacing: 1px;
+  color: var(--moon-ghost);
+  transition: color var(--dur-2) var(--ease-out), text-shadow var(--dur-2) var(--ease-out);
+}
+/* contextual hint, revealed only on intent */
+#menu .menu-buttons .mbtn::after {
+  content: attr(data-hint);
+  position: absolute; inset: auto 20px auto auto; top: 50%;
+  transform: translate3d(-10px, -50%, 0);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--track);
+  color: var(--sodium-deep);
+  background: none;
+  opacity: 0;
+  transition: opacity var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-out);
+}
+#menu .menu-buttons .mbtn:hover:not(:disabled),
+#menu .menu-buttons .mbtn:focus-visible {
+  color: var(--bone);
+  box-shadow: inset 2px 0 0 var(--sodium);
+  transform: translate3d(6px, 0, 0);
+  background-size: 100% 100%;
+}
+#menu .menu-buttons .mbtn:hover:not(:disabled)::before,
+#menu .menu-buttons .mbtn:focus-visible::before {
+  color: var(--sodium);
+  text-shadow: 0 0 10px rgba(255, 180, 84, 0.65);
+}
+#menu .menu-buttons .mbtn:hover:not(:disabled)::after,
+#menu .menu-buttons .mbtn:focus-visible::after { opacity: 1; transform: translate3d(0, -50%, 0); }
+#menu .menu-buttons .mbtn.is-pressed { transform: translate3d(6px, 0, 0) scale(0.985); }
+/* idle state: the default action keeps a resting selection rail and a
+   slow ember glow on its index — nothing else in the list moves. */
+#menu .menu-buttons .mbtn.primary {
+  color: var(--bone);
+  box-shadow: inset 2px 0 0 var(--sodium);
+  /* layer 1 is the shared hover wash (still zero-width at rest), layer 2 is
+     the resting glow that marks the default action */
+  background-image:
+    linear-gradient(90deg, rgba(255, 180, 84, 0.15), rgba(255, 180, 84, 0.035) 44%, transparent 72%),
+    linear-gradient(90deg, rgba(255, 180, 84, 0.06), transparent 48%);
+  background-size: 0% 100%, 100% 100%;
+}
+#menu .menu-buttons .mbtn.primary::before { color: var(--sodium); animation: idleBreath 4.6s var(--ease-io) infinite; }
+@keyframes idleBreath { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+
+.menu-more-links {
+  position: absolute; z-index: 8; top: 0; left: calc(100% + 14px);
+  display: grid; gap: 2px; width: 300px; padding: var(--s-2);
+  border: 1px solid var(--edge);
+  border-left: 2px solid var(--sodium-deep);
+  background: var(--surface-0);
+  box-shadow: var(--lift-2);
+  animation: subIn 220ms var(--ease-out) both;
+}
+@keyframes subIn { from { opacity: 0; transform: translate3d(-8px, 0, 0); } to { opacity: 1; transform: none; } }
+#menu .menu-buttons .menu-sub-link {
+  min-height: 38px; font-size: var(--t-sm); letter-spacing: var(--track); padding: 8px 12px 8px 40px;
+  animation: none;
+}
+#menu .menu-buttons .menu-sub-link::before { left: 14px; }
+#menu .menu-buttons .menu-sub-link::after { content: none; }
+
+/* ---- field manual / credits column ----------------------------------------
+   Reference material, not primary content. It is height-capped and its own
+   scroll container, so expanding the full legend can never change the height
+   of the page — the menu actions are always the thing that fits first. */
+.menu-brief {
+  align-self: center;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: min(68vh, 620px);
+  padding: clamp(12px, 2vh, 24px) clamp(14px, 1.4vw, 24px);
+  border: 1px solid var(--edge-soft);
+  border-top: 1px solid var(--edge);
+  background: linear-gradient(180deg, rgba(20, 27, 38, 0.5), rgba(7, 10, 16, 0.66));
+  box-shadow: var(--lift-2);
+  animation: riseIn var(--dur-5) var(--ease-out) both; animation-delay: 560ms;
+}
+.brief-head {
+  flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s-3); margin-bottom: clamp(8px, 1.4vh, 16px);
+}
+.brief-kicker { color: var(--sodium-deep); }
+.brief-toggle {
+  flex: 0 0 auto;
+  padding: 4px 9px;
+  font-family: var(--f-mono);
+  font-size: var(--t-3xs);
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--moon-dim);
+  background: rgba(120, 150, 186, 0.07);
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: color var(--dur-2) var(--ease-out), border-color var(--dur-2) var(--ease-out);
+}
+.brief-toggle:hover { color: var(--bone); border-color: var(--edge-strong); }
+.brief-toggle::after { content: ' +'; color: var(--sodium-deep); }
+.menu-brief.open .brief-toggle::after { content: ' −'; }
+.brief-rule { flex: 0 0 auto; height: 1px; margin: clamp(8px, 1.4vh, 16px) 0; background: linear-gradient(90deg, var(--edge), transparent); }
+.menu-help {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(4px, 0.7vh, 8px) var(--s-3);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.5px;
+  color: var(--moon-faint);
+}
+/* Collapsed: only the six essentials — one source of truth in the markup, no
+   duplicated legend. The height queries below trim this further. */
+.menu-brief:not(.open) .menu-help > .kp:nth-child(n + 7) { display: none; }
+.menu-help .kp { display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; }
+.menu-help b {
+  flex: 0 0 auto;
+  display: inline-block;
+  min-width: 22px;
+  padding: 2px 6px;
+  font-weight: 400;
+  font-size: var(--t-3xs);
+  color: var(--moon);
+  background: rgba(120, 150, 186, 0.09);
+  border: 1px solid var(--edge);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  text-align: center;
+}
+.menu-foot {
+  flex: 0 0 auto;
+  font-family: var(--f-mono);
+  font-size: var(--t-3xs);
+  line-height: 1.75;
+  letter-spacing: 0.4px;
+  color: rgba(125, 144, 166, 0.6);
+}
+.menu-credit-link { color: var(--bone-dim); text-decoration-color: var(--sodium-deep); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.menu-credit-link:hover { color: var(--sodium); }
+
