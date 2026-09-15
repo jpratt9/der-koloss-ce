@@ -16,6 +16,7 @@ import {
 } from './weapons.js';
 import { WeaponRig } from './weapons.js';
 import { ZombieManager, ZSTATES, ZombieVisual, createZombieModel, rayHitZombieBody, zombieAimPoint } from './zombies.js';
+import { coverRayDistance } from './shot-cover.js';
 import { attachZombieDetail } from './render/ZombieDetail.js';
 import { LocalPlayer, RemotePlayer } from './player.js';
 import { FX } from './fx.js';
@@ -84,6 +85,10 @@ const _shotMuzzle = new THREE.Vector3();
 // Scratch for the posed-body ray test and the host's claim target, likewise.
 const _bodyHit = { dist: 0, head: false };
 const _claimTarget = new THREE.Vector3();
+// Scratch for the face a shot struck on a prop's drawn cover: the latest test's,
+// and the nearest one kept so far.
+const _coverNormal = { x: 0, y: 1, z: 0 };
+const _coverStruck = { x: 0, y: 1, z: 0 };
 import {
   acceptPendingCredit,
   boundedPelletDirectionAllowed,
@@ -1767,6 +1772,13 @@ export class Game {
       // `bulletPass` is the same idea for the reverse case — scaffolding that
       // holds bodies but that the player cannot see, so it must not stop a shot.
       if (c.noRaycast || c.bulletPass) continue;
+      // A prop stops a shot only on the triangles drawn for it, not anywhere
+      // in the box bodies collide with (see js/shot-cover.js).
+      if (c.cover) {
+        const d = coverRayDistance(c.cover, origin.x, origin.y, origin.z, dir.x, dir.y, dir.z, best);
+        if (d >= 0) best = d;
+        continue;
+      }
       const t = segmentHitsBox(origin.x, origin.z, x1, z1, c);
       if (t < 0) continue;
       const yAt = origin.y + (y1 - origin.y) * t;
@@ -1798,6 +1810,13 @@ export class Game {
     let bestCollider = null;
     for (const c of this.map.colliders) {
       if (c.noRaycast || c.bulletPass) continue;
+      if (c.cover) {
+        const d = coverRayDistance(c.cover, origin.x, origin.y, origin.z, dir.x, dir.y, dir.z, out.dist, _coverNormal);
+        if (d < 0) continue;
+        out.dist = d; bestCollider = c;
+        _coverStruck.x = _coverNormal.x; _coverStruck.y = _coverNormal.y; _coverStruck.z = _coverNormal.z;
+        continue;
+      }
       const t = segmentHitsBox(origin.x, origin.z, x1, z1, c);
       if (t < 0) continue;
       const yAt = origin.y + (y1 - origin.y) * t;
@@ -1820,17 +1839,22 @@ export class Game {
     if (bestCollider) {
       out.hit = true;
       const c = bestCollider;
-      const hx = origin.x + dir.x * out.dist, hz = origin.z + dir.z * out.dist;
-      // Nearest face wins: the smallest distance to a slab plane is the one
-      // the ray came through.
-      const dxMin = Math.abs(hx - c.minX), dxMax = Math.abs(hx - c.maxX);
-      const dzMin = Math.abs(hz - c.minZ), dzMax = Math.abs(hz - c.maxZ);
-      const m = Math.min(dxMin, dxMax, dzMin, dzMax);
-      out.nx = 0; out.ny = 0; out.nz = 0;
-      if (m === dxMin) out.nx = -1;
-      else if (m === dxMax) out.nx = 1;
-      else if (m === dzMin) out.nz = -1;
-      else out.nz = 1;
+      if (c.cover) {
+        // The face of the drawn triangle that was struck.
+        out.nx = _coverStruck.x; out.ny = _coverStruck.y; out.nz = _coverStruck.z;
+      } else {
+        const hx = origin.x + dir.x * out.dist, hz = origin.z + dir.z * out.dist;
+        // Nearest face wins: the smallest distance to a slab plane is the one
+        // the ray came through.
+        const dxMin = Math.abs(hx - c.minX), dxMax = Math.abs(hx - c.maxX);
+        const dzMin = Math.abs(hz - c.minZ), dzMax = Math.abs(hz - c.maxZ);
+        const m = Math.min(dxMin, dxMax, dzMin, dzMax);
+        out.nx = 0; out.ny = 0; out.nz = 0;
+        if (m === dxMin) out.nx = -1;
+        else if (m === dxMax) out.nx = 1;
+        else if (m === dzMin) out.nz = -1;
+        else out.nz = 1;
+      }
       out.surface = c.window || c.board ? 'wood'
         : c.boxCollider ? 'wood'
         : c.prop ? 'metal'

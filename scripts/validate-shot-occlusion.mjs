@@ -18,28 +18,20 @@
 // only the first would let you shoot straight through a solid staircase.
 import assert from 'node:assert/strict';
 import { THREE, loadGameModule } from './lib/headless-three.mjs';
+import './lib/headless-map.mjs';
 
 const { buildMap } = await loadGameModule('map.js');
-const { segmentHitsBox } = await loadGameModule('utils.js');
+const { Game } = await loadGameModule('game.js');
 
 const map = buildMap(new THREE.Scene());
 for (const door of map.doors) if (!door.open) map.openDoor(door);
 
-// Game.wallDist, verbatim in behaviour. If that filter and this one ever drift,
-// this file is asserting on a raycast the game does not perform.
-function wallDist(o, dir, maxDist = 60) {
-  const x1 = o.x + dir.x * maxDist, z1 = o.z + dir.z * maxDist, y1 = o.y + dir.y * maxDist;
-  let best = maxDist;
-  for (const c of map.colliders) {
-    if (c.noRaycast || c.bulletPass) continue;
-    const t = segmentHitsBox(o.x, o.z, x1, z1, c);
-    if (t < 0) continue;
-    const yAt = o.y + (y1 - o.y) * t;
-    const y0 = c.y0 || 0;
-    if (yAt >= y0 && yAt <= y0 + (c.h || 3)) { const d = t * maxDist; if (d < best) best = d; }
-  }
-  return best;
-}
+// The game's own Game.wallDist, not a copy of it: a copy drifts the moment the
+// raycast changes (props now stop shots on their drawn triangles), and then
+// this file asserts on a raycast the game does not perform.
+const game = Object.create(Game.prototype);
+game.map = map;
+const wallDist = (o, dir, maxDist = 60) => game.wallDist(o, dir, maxDist);
 
 function shot(from, to) {
   const dx = to.x - from.x, dy = to.y - from.y, dz = to.z - from.z;

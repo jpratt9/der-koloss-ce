@@ -918,6 +918,9 @@ export function decorateMap(group, ctx) {
   let propTris = 0;
   for (const [key, geos] of Object.entries(buckets)) {
     if (!geos.length) continue;
+    // Merging erases which triangles belong to which prop; the map needs that
+    // to shape each prop's bullet cover, so it gets the pieces first.
+    if (ctx.shotPieces) for (const g of geos) ctx.shotPieces.push({ geometry: g, matrix: null });
     const merged = mergeGeometries(geos, false);
     for (const g of geos) g.dispose();
     if (!merged) continue;

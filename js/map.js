@@ -9,6 +9,7 @@ import { enhanceMaterial } from './render/Materials.js';
 import { splatTexture } from './render/Particles.js';
 import { BLOOD_DECAL_COLOR } from './fx.js';
 import { decorateMap } from './map-props.js';
+import { attachShotCover } from './shot-cover.js';
 import { buildPerkMachine } from './props/perkMachine.js';
 import { buildMysteryBox } from './props/mysteryBox.js';
 import { buildPackAPunch, buildPapSignFrame } from './props/packAPunch.js';
@@ -227,6 +228,10 @@ export function buildMap(scene, opts = {}) {
   enhanceMaterial(matWood, { detailScale: 6.0, detailStrength: 0.45, macroAmount: 0.2, macroRough: 0.2 });
 
   const solidGeos = { wall: [], brick: [], metal: [], wood: [], dark: [], plate: [], concrete: [], ceiling: [] };
+  // Every piece of geometry drawn, gathered before the merges below erase which
+  // triangles made up which prop, so each prop collider can be given the shape
+  // a bullet should actually stop on (see js/shot-cover.js).
+  const shotPieces = [];
   // world-units per texture tile for each merged material (brick tile = 1.76m of wall)
   solidGeos.wall.uvScale = 1 / 1.76;
   solidGeos.brick.uvScale = 1 / 1.76;
@@ -1377,6 +1382,7 @@ export function buildMap(scene, opts = {}) {
       concrete: matConcrete, dark: matDark, brick: matBrick,
     },
     colliders,
+    shotPieces,
     // Snapshot of the STRUCTURAL colliders only (walls, doors, platform edges)
     // taken before any prop registers its own. Dressing must prove it is
     // actually against one of these before it is placed, so nothing ends up
@@ -1653,6 +1659,7 @@ export function buildMap(scene, opts = {}) {
   for (const key of Object.keys(solidGeos)) {
     const arr = solidGeos[key];
     if (!arr.length) continue;
+    for (const g of arr) shotPieces.push({ geometry: g, matrix: null });
     // manual merge (BufferGeometryUtils-free)
     let total = 0;
     for (const g of arr) total += g.attributes.position.count;
@@ -1683,6 +1690,26 @@ export function buildMap(scene, opts = {}) {
   }
 
   scene.add(group);
+
+  // The props built as their own meshes (cages, vats, the car, the generator)
+  // join the merged pieces, then every prop collider takes the geometry drawn
+  // for it. Left out: effects that stop nothing (glows, light cones), instanced
+  // details too small to matter, and anything that moves or vanishes after the
+  // build — doors, window boards, the mystery box — which would leave cover
+  // hanging in the air where it used to be.
+  const moving = new Set();
+  for (const root of [...doors.map((d) => d.mesh), ...barriers.map((b) => b.boardsMesh), boxG]) {
+    root?.traverse((o) => moving.add(o));
+  }
+  group.updateMatrixWorld(true);
+  group.traverseVisible((o) => {
+    if (!o.isMesh || o.isInstancedMesh || moving.has(o) || /^(solid|props)_/.test(o.name)) return;
+    const m = Array.isArray(o.material) ? o.material[0] : o.material;
+    if (!m || m.transparent || m.depthWrite === false || m.blending !== THREE.NormalBlending) return;
+    shotPieces.push({ geometry: o.geometry, matrix: o.matrixWorld.elements });
+  });
+  attachShotCover(colliders, shotPieces);
+  shotPieces.length = 0;
 
   // ---------- runtime update ----------
   let time = 0;
