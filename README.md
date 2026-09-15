@@ -253,7 +253,8 @@ index.html          Menu, game shell, import map
 js/                 Game source (ES modules, no bundler)
   game.js             Engine core: setup, frame loop, exit
   game/               Engine by domain: combat, rounds, interactions, box, Pack-a-Punch, co-op
-  main.js             Menu, lobby, boot
+  main.js             Page entry point: wires the controls, boots the page
+  main/               Options, characters, cheat codes, lobby, menu music, match start and exit
   weapons.js          Weapons entry point: re-exports js/weapons/
   weapons/            The 31-weapon catalog, view-model builders, finishes, first-person rig
   map.js              Map entry point: builds js/map/ in order, runs the map
