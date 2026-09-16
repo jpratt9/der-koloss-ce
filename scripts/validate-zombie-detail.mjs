@@ -25,7 +25,7 @@ await loadZombieModels();
 const { ZombieVisual } = await loadGameModule('zombies.js');
 const { attachZombieDetail } = await loadGameModule('render', 'ZombieDetail.js');
 
-const VARIANTS = 8;   // the damage pool size in ZombieDetail.js; indices wrap
+const VARIANTS = 8;   // the damage pool size in js/render/ZombieDetail/constants.js; indices wrap
 const CLIPS = [['Idle', 0.35], ['Walk', 0.25], ['Run', 0.6], ['Idle_Attack', 0.4], ['Crawl', 0.3]];
 const MODELS = [[0, 'Basic'], [1, 'Chubby']];
 // A piece is floating where no skin is within this many metres of it. Cloth
