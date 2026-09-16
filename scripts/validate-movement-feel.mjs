@@ -4,6 +4,7 @@
 // the point is that a future edit cannot silently undo a fix that was painful
 // to find (a key collision, an unstable integrator, a lost momentum term).
 import assert from 'node:assert/strict';
+import { readPostFXSource } from './lib/postfx-source.mjs';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -15,7 +16,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (file) => readFile(path.join(root, file), 'utf8');
 const [player, game, rig, input, indexHtml, postfx] = await Promise.all([
   readPlayerSource(), readGameSource(), read('js/render/CameraRig.js'),
-  read('js/input.js'), read('index.html'), read('js/render/PostFX.js'),
+  read('js/input.js'), read('index.html'), readPostFXSource(),
 ]);
 
 // ---------------------------------------------------------------- key budget
