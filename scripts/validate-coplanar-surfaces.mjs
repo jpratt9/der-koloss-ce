@@ -21,7 +21,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { DOOR_FIT, MAP_DOOR_DEFS, MAP_WALL_RUNS, cappedWallRuns } from '../js/map-layout.js';
-import { readMapSource, readShadersSource } from './lib/game-source.mjs';
+import { readMapSource, readPropMaterialsSource, readShadersSource } from './lib/game-source.mjs';
 
 const EPS = 0.02;   // a plane separation below this is not a separation
 
@@ -204,7 +204,7 @@ assert.equal((matSource.match(/customProgramCacheKey = \(\) =>/g) || []).length,
 // The hero props must get the same filtering. This was the gap: 2cm glossy
 // rivets and flanges on the door jambs had no geometric specular AA at all,
 // because the filter only ever reached the map's merged materials.
-const propSource = await readFile(new URL('../js/props/materials.js', import.meta.url), 'utf8');
+const propSource = readPropMaterialsSource();
 assert.match(propSource, /import \{ applyNormalFilter \} from '\.\.\/render\/Materials\.js';/,
   'props/materials.js must import the shared normal filter');
 assert.match(propSource, /subtractGeometric: true/,
@@ -232,7 +232,7 @@ assert.match(propSource, /function normalFromHeight\(hCanvas, strength, blur\)/,
 assert.match(propSource, /if \(!\(blur >= 0\)\) throw new Error/,
   'normalFromHeight must refuse to Sobel a height field with no blur radius');
 
-const blurTable = propSource.match(/^const BLUR = \{$([\s\S]*?)^\};$/m);
+const blurTable = propSource.match(/^(?:export )?const BLUR = \{$([\s\S]*?)^\};$/m);
 assert.ok(blurTable, 'props/materials.js must declare a BLUR table of per-generator radii');
 const radii = Object.fromEntries(
   [...blurTable[1].matchAll(/^\s{2}(\w+): (\d+),$/gm)].map(([, k, v]) => [k, Number(v)]));

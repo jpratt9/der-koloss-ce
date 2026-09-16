@@ -14,7 +14,10 @@
 // js/fx/: the classes whose methods fx.js copies onto FX.prototype, and the
 // surface table and sprite textures they share. The post stack's GLSL is
 // js/render/shaders.js plus the modules in js/render/shaders/ that it
-// re-exports. The soldiers' gear is js/render/SoldierGear.js plus the modules
+// re-exports. The prop surfaces are js/props/materials.js plus the modules in
+// js/props/materials/: the kit its generators draw through, the material map
+// generators and the overlay textures. The soldiers' gear is
+// js/render/SoldierGear.js plus the modules
 // in js/render/SoldierGear/: the constants, palettes, materials and primitive
 // kit its wardrobe is built from. The stylesheet is style.css plus the files in
 // style/, which index.html links in name order. A check reads all of one as a single string,
@@ -82,6 +85,11 @@ export function readFxSource() {
 /** js/render/shaders.js, then every .js file under js/render/shaders/ in path order, joined with newlines. */
 export function readShadersSource() {
   return readSplitSource(new URL('render/', js), 'shaders', '.js');
+}
+
+/** js/props/materials.js, then every .js file under js/props/materials/ in path order, joined with newlines. */
+export function readPropMaterialsSource() {
+  return readSplitSource(new URL('props/', js), 'materials', '.js');
 }
 
 /** js/render/SoldierGear.js, then every .js file under js/render/SoldierGear/ in path order, joined with newlines. */
