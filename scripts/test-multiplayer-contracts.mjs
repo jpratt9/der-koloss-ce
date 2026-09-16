@@ -338,10 +338,10 @@ assert.match(gameSource, /dispose\(\)[\s\S]{0,1000}multiplayerRoster\(false, \[\
 assert.match(hudSource, /presentation\.signature === this\._multiplayerRosterSig/);
 assert.match(hudSource, /row\.dataset\.signature !== rowSignature/);
 assert.match(hudSource, /\.textContent = player\.name/, 'untrusted names must render as inert text');
-const multiplayerRosterSource = hudSource.slice(
-  hudSource.indexOf('  multiplayerRoster(multiplayer, players)'),
-  hudSource.indexOf('  drawMinimap(g)'),
-);
+const rosterStart = hudSource.indexOf('  multiplayerRoster(multiplayer, players)');
+const rosterEnd = hudSource.indexOf('  scope(on)', rosterStart);
+assert.ok(rosterStart >= 0 && rosterEnd > rosterStart, 'roster source boundaries must exist and be ordered');
+const multiplayerRosterSource = hudSource.slice(rosterStart, rosterEnd);
 assert.doesNotMatch(multiplayerRosterSource, /innerHTML/);
 assert.match(styleSource, /#multiplayer-roster \{[\s\S]*?width: clamp\(190px, 21vw, 248px\)/);
 assert.match(styleSource, /@media \(max-width: 700px\)[\s\S]*?#multiplayer-roster \{ width: min\(226px, calc\(100vw - 36px\)\); right: 18px; \}/);
