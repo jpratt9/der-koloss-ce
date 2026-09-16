@@ -275,13 +275,13 @@ js/                 Game source (ES modules, no bundler)
   audio/              Engine methods (listener, playback, weapons, fallbacks, music), mixing, occlusion, ambience, impulse responses
 vendor/             Three.js, PeerJS, GLTFLoader (vendored, unmodified)
 assets/             Audio, models, textures, fonts, portraits
-scripts/            67 headless validators
+scripts/            68 headless validators
 about/  api/        About page; invite-link OG metadata
 ```
 
 ## Validators
 
-The project has no unit tests. It has **67 headless validators** that assert gameplay and rendering invariants — things that are expensive to rediscover once broken: control-key collisions, camera-spring stability, allocation budgets in the collision and particle hot paths, coplanar geometry, spawn sources, shot occlusion, weapon model integrity, the shared geometry and material libraries behind the view-models, the pooled co-op uniforms, host/guest combat agreement, a whole co-op session against a fake PeerJS, and every effect the game draws against recording particle pools.
+The project has no unit tests. It has **68 headless validators** that assert gameplay and rendering invariants — things that are expensive to rediscover once broken: control-key collisions, camera-spring stability, allocation budgets in the collision and particle hot paths, coplanar geometry, spawn sources, shot occlusion, weapon model integrity, the shared geometry and material libraries behind the view-models, the seeded surfaces every machine is built from, the pooled co-op uniforms, host/guest combat agreement, a whole co-op session against a fake PeerJS, and every effect the game draws against recording particle pools.
 
 Run them all:
 
