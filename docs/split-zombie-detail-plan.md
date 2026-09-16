@@ -14,7 +14,7 @@ This plan covers `js/render/ZombieDetail.js`, **the last file over the cap with 
 
 This doc's §2 replaces the props/materials plan's ranking.
 
-**Status: done.** The plan was carried out on 2026-09-16 in commits `148aab7`, `538d492` and `bdb1f5a`, one per step in §1.8. js/render/ZombieDetail.js went from 682 lines to 117, and the largest file in js/render/ZombieDetail/ is variant.js, at 263. `count_lines.py` now finds 5 files with 471 lines over the cap. It went as planned, with these notes:
+**Status: done.** The plan was carried out on 2026-09-16 in commits `148aab7`, `538d492` and `bdb1f5a`, one per step in §1.8. js/render/ZombieDetail.js went from 682 lines to 117, and the largest file in js/render/ZombieDetail/ is variant.js, at 263. `count_lines.py` now finds 5 files with 971 lines over the cap — 364 of those across the three marginal single-class files, and 607 across the two that cannot be split. It went as planned, with these notes:
 
 - **All six line counts landed within two lines of the §1.3 estimates** — the first split in the series where none missed.
 
@@ -261,7 +261,7 @@ Noted, not touched. Every one predates this plan.
 
 ### Recommendation
 
-**Stop after this one.** The campaign started at 11 files and 2,403 excess lines; after §1 it is 5 files and 471 excess lines across three marginal ones plus two that genuinely cannot be split. Every remaining candidate is either a single cohesive class 59–180 lines over, or a file whose split is a rewrite rather than a move.
+**Stop after this one.** The campaign started at 11 files and 2,403 excess lines; after §1 it is 5 files and 971, of which 607 belong to the two files that genuinely cannot be split and 364 to three single cohesive classes 59–180 lines over. Every remaining candidate is either a single cohesive class 59–180 lines over, or a file whose split is a rewrite rather than a move.
 
 The 500-line cap has done its work: the repo went from `Game`, `FX`, `Net`, `ZombieManager`, `AudioEngine`, the map, the weapons and the player all being single files of 600–1,100 lines to being folders of modules under 350, each with a contract test. Continuing past this point means splitting classes that have no seam, to save under 200 lines, in the frame loop and the pathfinder. That is a worse trade than leaving them.
 
