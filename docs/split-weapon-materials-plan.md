@@ -14,7 +14,7 @@ This plan covers `js/render/WeaponMaterials.js`, the largest file with a clean s
 
 This doc's §2 replaces the SoldierGear plan's ranking of the other files.
 
-**Status: done.** The plan was carried out on 2026-09-15 in commits `50949e2`, `026797e`, `963ce91` and `d3720bb`, one per step in §1.8. js/render/WeaponMaterials.js went from 712 lines to 50, and the largest file in js/render/WeaponMaterials/ is surfaces.js, at 334. `count_lines.py` now finds 7 files with 838 lines over the cap. It went as planned, with these notes:
+**Status: done.** The plan was carried out on 2026-09-15 in commits `50949e2`, `026797e`, `963ce91` and `d3720bb`, one per step in §1.8. js/render/WeaponMaterials.js went from 712 lines to 50, and the largest file in js/render/WeaponMaterials/ is surfaces.js, at 334. `count_lines.py` now finds 7 files with 1,338 lines over the cap. It went as planned, with these notes:
 
 - **Actual line counts** are within two lines of the §1.3 estimates.
 
