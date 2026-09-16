@@ -1,0 +1,48 @@
+import assert from 'node:assert/strict';
+import { archiveHarness, moduleTest } from './lib/assets-page-harness.mjs';
+
+// These assertions were first run against the unsplit page before extracting it.
+await moduleTest(async () => {
+  const h = archiveHarness();
+  await h.evaluate('js/assets-page.js');
+  const fires = () => h.log.filter(x => x[0] === 'fire').length;
+  const fireButton = pap => h.element('weapon-audio').querySelectorAll('.weapon-fire-button')[pap ? 1 : 0];
+  const down = button => button.emit('pointerdown', { button: 0, pointerId: 1, preventDefault() {} });
+  const search = async value => { h.element('weapon-search').value = value; await h.element('weapon-search').emit('input', { target: { value } }); };
+  const action = label => h.element('weapon-audio').querySelectorAll('.weapon-action').find(x => x.textContent === label);
+  assert.equal(h.element('weapon-name').textContent, 'Pistol');
+  assert.equal(h.element('weapon-grid').children.length, 2);
+  let button = fireButton(false); await down(button); assert.equal(fires(), 1);
+  h.advance(500); assert.equal(fires(), 1, 'semi-auto fires once while held');
+  await button.emit('pointerup');
+  assert.match(h.element('weapon-stats').innerHTML, /1 \/ 2/);
+  await h.select('variant', 'pap').click(); assert.match(h.element('weapon-stats').innerHTML, /4 \/ 4/);
+  await h.select('variant', 'normal').click(); assert.match(h.element('weapon-stats').innerHTML, /1 \/ 2/, 'ammo survives variant changes');
+  await h.select('finish', 'diamond').click(); assert.equal(h.element('weapon-name').textContent, 'Upgraded pistol');
+  await h.select('variant', 'normal').click(); assert.equal(h.element('weapon-name').textContent, 'Pistol');
+  await h.select('finish', 'gold').click(); await action('Fire animation').emit('pointerdown', { button: 0, preventDefault() {} });
+  assert.equal(h.select('finish', 'gold').classList.contains('active'), true, 'animation fire preserves finish');
+  await search('mp40'); await h.select('variant', 'both').click();
+  button = fireButton(false); const before = fires(); await down(button); h.advance(200);
+  assert.equal(fires(), before + 2); assert.match(h.element('weapon-status').textContent, /RELOADING/);
+  await button.emit('pointerup'); h.advance(1000);
+  assert.equal(fires(), before + 2, 'release during automatic reload must not resume fire');
+  assert.match(h.element('weapon-stats').innerHTML, /2 \/ 2/);
+  button = fireButton(false); await down(button); h.advance(200);
+  const stale = [...h.timers.values()].map(t => t.fn);
+  await search('pistol'); const count = fires(), status = h.element('weapon-status').textContent;
+  for (const fn of stale) fn();
+  h.advance(1000); assert.equal(fires(), count); assert.equal(h.element('weapon-status').textContent, status, 'stale reload callbacks do not change the next weapon');
+  await search('');
+  const smgFilter = h.element('class-filters').children.find(x => x.textContent === 'Submachine Guns'); await smgFilter.click();
+  assert.equal(h.element('weapon-name').textContent, 'MP40');
+  button = fireButton(false); await down(button);
+  const pistolFilter = h.element('class-filters').children.find(x => x.textContent === 'Pistols'); await pistolFilter.click();
+  const afterFilter = fires(); h.advance(1000); assert.equal(fires(), afterFilter, 'class change cancels automatic fire');
+  const record = h.element('original-music-control').children[0]; await record.click();
+  const audio = h.media[0]; assert.equal(audio.paused, false); await record.click(); assert.equal(audio.paused, true);
+  await record.click(); await down(fireButton(false)); assert.equal(audio.paused, true, 'weapon firing pauses the recording');
+  await record.click(); assert.equal(audio.paused, false, 'recording cancels weapon interaction');
+  const finalCount = fires(); h.advance(1000); assert.equal(fires(), finalCount);
+  console.log('Asset page OK: baseline selection, filters, finishes, distinct ammo, firing/reload cancellation and recording transitions.');
+});

@@ -1,14 +1,12 @@
-import * as THREE from 'three';
-
 // Asset Archive interactions: model inspection, recordings, filters, and playback.
-import { WEAPONS, WeaponRig, getStats } from './weapons.js';
-import { PERSONAS, LINES } from './personas.js';
+import { WEAPONS, getStats } from './weapons.js';
 import { initSiteAudio } from './site-audio.js?v=6';
+import { createWeaponViewer } from './assets-page/viewer.js';
+import { renderArchiveCatalog } from './assets-page/catalog.js';
+import { createAudioDock, soundUrl } from './assets-page/audio-dock.js';
 
 const $ = (id) => document.getElementById(id);
 const siteAudio = initSiteAudio();
-const audio = new Audio();
-audio.preload = 'metadata';
 
 const CLASS_NAMES = {
   pistol: 'Pistols', smg: 'Submachine Guns', rifle: 'Rifles', shotgun: 'Shotguns',
@@ -23,237 +21,26 @@ let variantFilter = 'both';
 let searchTerm = '';
 let previewPap = false;
 let finishMode = 'standard';
-let activeSoundId = '';
 let weaponInteractionActive = false;
 
-// ElevenLabs-generated perk bottle shatter and deep soda belch.
-const AUDIO_REVISIONS = Object.freeze({ bottle_break: 'perk-v4', belch: 'perk-v4' });
-function soundUrl(id) { return `../assets/audio/${id}.mp3${AUDIO_REVISIONS[id] ? `?v=${AUDIO_REVISIONS[id]}` : ''}`; }
-function formatTime(value) {
-  if (!Number.isFinite(value)) return '0:00';
-  const minutes = Math.floor(value / 60);
-  return `${minutes}:${String(Math.floor(value % 60)).padStart(2, '0')}`;
-}
-function titleCase(value) {
-  const names = {
-    pap: 'Pack-a-Punch', dg2: 'Wunderwaffe DG-2', dtap: 'Double Tap', qr: 'Quick Revive',
-    jug: 'Juggernog', zdeath: 'Zombie Death', magin: 'Magazine In', magout: 'Magazine Out',
-    maxammo: 'Max Ammo', double: 'Double Points', insta: 'Insta-Kill',
-    cellin: 'Power Cell In', cellout: 'Power Cell Out', boltopen: 'Bolt Open', boltclose: 'Bolt Close',
-  };
-  return value.split('_').map((word) => names[word] || word.replace(/(\d+)/, ' $1').replace(/^./, (c) => c.toUpperCase())).join(' ');
-}
-
-function clearPlayingButtons() {
-  document.querySelectorAll('.sound-button.playing').forEach((button) => button.classList.remove('playing'));
-}
-function syncPlayingButtons() {
-  clearPlayingButtons();
-  if (audio.paused || !activeSoundId) return;
-  document.querySelectorAll(`.sound-button[data-sound="${CSS.escape(activeSoundId)}"]`).forEach((button) => button.classList.add('playing'));
-}
-function playSound(id, title, kind = 'Archive audio', modelPap = null) {
-  cancelWeaponInteraction('READY // SELECT A FIRE CONTROL');
-  if (activeSoundId === id && !audio.paused) {
-    audio.pause();
-    return;
-  }
-  activeSoundId = id;
-  audio.src = soundUrl(id);
-  $('dock-title').textContent = title;
-  $('dock-kind').textContent = kind.toUpperCase();
-  $('audio-dock').classList.add('visible');
-  $('dock-toggle').disabled = false;
-  $('dock-scrub').disabled = false;
-  if (modelPap !== null) {
-    previewPap = modelPap;
-    finishMode = modelPap ? 'pap' : 'standard';
-    document.querySelectorAll('.finish-button').forEach((candidate) => candidate.classList.toggle('active', candidate.dataset.finish === finishMode));
-    renderSelectedWeapon();
-  }
-  siteAudio.setDucked(true);
-  audio.play().catch(() => siteAudio.setDucked(false));
-}
-
-audio.addEventListener('play', () => {
-  siteAudio.setDucked(true);
-  $('dock-toggle').textContent = '❚❚';
-  $('dock-toggle').setAttribute('aria-label', 'Pause audio');
-  syncPlayingButtons();
-});
-audio.addEventListener('pause', () => {
-  if (!weaponInteractionActive) siteAudio.setDucked(false);
-  $('dock-toggle').textContent = '▶';
-  $('dock-toggle').setAttribute('aria-label', 'Play audio');
-  syncPlayingButtons();
-});
-audio.addEventListener('ended', () => { siteAudio.setDucked(false); clearPlayingButtons(); });
-audio.addEventListener('loadedmetadata', () => { $('dock-duration').textContent = formatTime(audio.duration); });
-audio.addEventListener('timeupdate', () => {
-  $('dock-current').textContent = formatTime(audio.currentTime);
-  $('dock-scrub').value = audio.duration ? String((audio.currentTime / audio.duration) * 100) : '0';
-});
-$('dock-toggle').addEventListener('click', () => { if (audio.paused) audio.play().catch(() => {}); else audio.pause(); });
-$('dock-scrub').addEventListener('input', (event) => {
-  if (audio.duration) audio.currentTime = (Number(event.target.value) / 100) * audio.duration;
+const { makeSoundButton, syncPlayingButtons, showLiveDock, pauseForWeapon } = createAudioDock({
+  siteAudio, cancelWeaponInteraction, applyPreviewPap,
+  isWeaponInteractionActive: () => weaponInteractionActive,
 });
 
-function makeSoundButton({ id, label, kind, modelPap = null }) {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'sound-button';
-  button.dataset.sound = id;
-  button.dataset.uiSound = 'off';
-  button.textContent = label;
-  button.addEventListener('click', () => playSound(id, label, kind, modelPap));
-  return button;
+function applyPreviewPap(modelPap) {
+  previewPap = modelPap;
+  finishMode = modelPap ? 'pap' : 'standard';
+  document.querySelectorAll('.finish-button').forEach((candidate) => candidate.classList.toggle('active', candidate.dataset.finish === finishMode));
+  renderSelectedWeapon();
 }
 
 // ---------------------------------------------------------------------------
 // Interactive armory model
 // ---------------------------------------------------------------------------
-const canvas = $('weapon-canvas');
-const canvasWrap = $('weapon-canvas-wrap');
-const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.35;
-
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(34, 1, 0.01, 50);
-// Eye height and the height the model is mounted at are the SAME number on
-// purpose — the model's measured centre then lands exactly on the optical
-// centre of the frame. Two different constants here is how the framing drifts.
-const STAGE_EYE_Y = 0.06;
-camera.position.set(0, STAGE_EYE_Y, 3.1);
-scene.add(new THREE.HemisphereLight(0xc7d2df, 0x24140e, 1.25));
-scene.add(new THREE.AmbientLight(0xffffff, 1.15));
-const keyLight = new THREE.DirectionalLight(0xffead0, 3.2);
-keyLight.position.set(3, 4, 4);
-scene.add(keyLight);
-const rimLight = new THREE.DirectionalLight(0xa31f27, 4.5);
-rimLight.position.set(-4, 1, -3);
-scene.add(rimLight);
-const modelPivot = new THREE.Group();
-scene.add(modelPivot);
-
-const rigCamera = new THREE.PerspectiveCamera();
-const weaponRig = new WeaponRig(rigCamera);
-weaponRig.hipPos.set(0, 0, 0);
-let currentMount = null;
-let yaw = -0.28;
-let pitch = -0.12;
-let dragging = false;
-let lastX = 0;
-let lastY = 0;
-let lastInteraction = 0;
-
-// The pose the archive holds the weapon in: no aim, no movement, no sway. The
-// render loop feeds these same values every frame, so a rig settled with them
-// is in exactly the pose that will be drawn.
-const REST_POSE = { ads: false, moving: false, sprinting: false, mouseX: 0, mouseY: 0 };
-
-// Bounds of what is actually ON SCREEN. Box3.setFromObject() does not test
-// `visible` and does not skip sprites, so a plain box here swallows the hidden
-// gloves and the zero-opacity muzzle flash and centres the weapon against
-// geometry nobody can see.
-function visibleBounds(root) {
-  const box = new THREE.Box3();
-  const scratch = new THREE.Box3();
-  (function walk(object, parentVisible) {
-    const visible = parentVisible && object.visible;
-    if (visible && object.isMesh && !object.isSprite && object.geometry) {
-      if (!object.geometry.boundingBox) object.geometry.computeBoundingBox();
-      box.union(scratch.copy(object.geometry.boundingBox).applyMatrix4(object.matrixWorld));
-    }
-    for (const child of object.children) walk(child, visible);
-  })(root, true);
-  return box;
-}
-
-function setModel(id, pap, finish = finishMode) {
-  const weaponChanged = weaponRig.current?.id !== id;
-  if (currentMount) modelPivot.remove(currentMount);
-  weaponRig.alwaysGold = false;
-  weaponRig.diamondNext = finish === 'diamond';
-  weaponRig.equip(id, pap);
-  weaponRig.equipT = 1;
-  if (finish === 'gold') weaponRig.applyGoldCamo(true);
-  if (finish === 'diamond' && !weaponRig.diamondCamo) weaponRig.applyDiamondCamo();
-  const model = weaponRig.current.group;
-  // The archive presents the weapon alone, so the gloves come off. Test the
-  // glove flag, NOT the part name: a name prefix of "hand" also matches
-  // `handguard` and `handle`, which took the wooden forend and the carry handle
-  // off fifteen weapons and left the front end hanging in space.
-  model.traverse((o) => { if (o.userData?.isGlove) o.visible = false; });
-  // Settle the rig into its rest pose BEFORE measuring. equip() leaves the
-  // weapon in the lowered holster pose it rises out of, and the first update()
-  // of the render loop lifts it back up — so a box taken here without this
-  // call is stale by the height of that raise. The error is then multiplied by
-  // the fit scale below, which is why it threw the small guns (scaled ~3x)
-  // clean off the top of the frame and left the rifles sitting high.
-  weaponRig.update(0, REST_POSE);
-  model.removeFromParent();
-  model.updateMatrixWorld(true);
-  const box = visibleBounds(model);
-  const center = box.getCenter(new THREE.Vector3());
-  const size = box.getSize(new THREE.Vector3());
-  const longest = Math.max(size.x, size.y, size.z, 0.01);
-  const scale = 1.28 / longest;
-  const centerMount = new THREE.Group();
-  centerMount.position.copy(center).multiplyScalar(-1);
-  centerMount.add(model);
-  const orientationMount = new THREE.Group();
-  orientationMount.rotation.y = Math.PI / 2;
-  orientationMount.add(centerMount);
-  currentMount = new THREE.Group();
-  currentMount.scale.setScalar(scale);
-  currentMount.position.y = STAGE_EYE_Y;
-  currentMount.add(orientationMount);
-  modelPivot.clear();
-  modelPivot.add(currentMount);
-  if (weaponChanged) {
-    yaw = -0.28;
-    pitch = -0.12;
-  }
-}
-
-canvasWrap.addEventListener('pointerdown', (event) => {
-  dragging = true; lastX = event.clientX; lastY = event.clientY; lastInteraction = performance.now();
-  canvasWrap.setPointerCapture(event.pointerId);
+const { weaponRig, setModel, resetView } = createWeaponViewer({
+  canvas: $('weapon-canvas'), canvasWrap: $('weapon-canvas-wrap'),
 });
-canvasWrap.addEventListener('pointermove', (event) => {
-  if (!dragging) return;
-  yaw += (event.clientX - lastX) * 0.008;
-  pitch = THREE.MathUtils.clamp(pitch + (event.clientY - lastY) * 0.006, -0.65, 0.65);
-  lastX = event.clientX; lastY = event.clientY; lastInteraction = performance.now();
-});
-canvasWrap.addEventListener('pointerup', (event) => { dragging = false; lastInteraction = performance.now(); canvasWrap.releasePointerCapture(event.pointerId); });
-canvasWrap.addEventListener('pointercancel', () => { dragging = false; });
-
-function resizeRenderer() {
-  const rect = canvasWrap.getBoundingClientRect();
-  const width = Math.max(1, Math.round(rect.width));
-  const height = Math.max(1, Math.round(rect.height));
-  renderer.setSize(width, height, false);
-  camera.aspect = width / height;
-  camera.updateProjectionMatrix();
-}
-new ResizeObserver(resizeRenderer).observe(canvasWrap);
-resizeRenderer();
-
-let lastFrame = performance.now();
-function renderFrame(now) {
-  const dt = Math.min((now - lastFrame) / 1000, 0.05);
-  lastFrame = now;
-  if (!dragging && now - lastInteraction > 1700 && !matchMedia('(prefers-reduced-motion: reduce)').matches) yaw += dt * 0.22;
-  weaponRig.update(dt, REST_POSE);
-  modelPivot.rotation.set(pitch, yaw, 0.03);
-  renderer.render(scene, camera);
-  requestAnimationFrame(renderFrame);
-}
-requestAnimationFrame(renderFrame);
 
 // ---------------------------------------------------------------------------
 // Armory filters and selection
@@ -393,18 +180,6 @@ function pooledShot(soundId) {
   shot.play().catch(() => {});
 }
 
-function showLiveDock(title, kind) {
-  $('audio-dock').classList.add('visible');
-  $('dock-title').textContent = title;
-  $('dock-kind').textContent = kind.toUpperCase();
-  $('dock-toggle').textContent = '•';
-  $('dock-toggle').disabled = true;
-  $('dock-scrub').disabled = true;
-  $('dock-current').textContent = 'LIVE';
-  $('dock-duration').textContent = '';
-  $('dock-scrub').value = '0';
-}
-
 function clearReloadTimers() {
   reloadTimers.forEach(clearTimeout);
   reloadTimers = [];
@@ -448,9 +223,7 @@ function completeReload(id, pap) {
 function playReloadSequence(id, pap = previewUsesPap(), onComplete = null) {
   clearReloadTimers();
   const token = reloadToken;
-  audio.pause();
-  activeSoundId = '';
-  clearPlayingButtons();
+  pauseForWeapon();
   weaponInteractionActive = true;
   siteAudio.setDucked(true);
   const weapon = WEAPONS[id];
@@ -523,9 +296,7 @@ function fireNextRound() {
 function startFiring(pap, button, held = true, preserveFinish = false) {
   cancelWeaponInteraction();
   if (!preserveFinish) activateFireVariant(pap);
-  audio.pause();
-  activeSoundId = '';
-  clearPlayingButtons();
+  pauseForWeapon();
   weaponInteractionActive = true;
   siteAudio.setDucked(true);
   const weapon = WEAPONS[selectedId];
@@ -612,7 +383,7 @@ function renderSelectedWeapon() {
   inspect.addEventListener('click', () => weaponRig.startInspect());
   const rotate = document.createElement('button');
   rotate.type = 'button'; rotate.className = 'weapon-action'; rotate.textContent = 'Reset view';
-  rotate.addEventListener('click', () => { yaw = -0.28; pitch = -0.12; lastInteraction = 0; });
+  rotate.addEventListener('click', resetView);
   actions.append(shoot, reload, inspect, rotate);
   soundHost.append(actions);
   syncPlayingButtons();
@@ -664,62 +435,7 @@ $('weapon-grid').addEventListener('keydown', (event) => {
 // ---------------------------------------------------------------------------
 // Voice and effects catalog
 // ---------------------------------------------------------------------------
-function renderGroup(host, title, sounds) {
-  const section = document.createElement('section');
-  section.className = 'sound-group';
-  const head = document.createElement('div');
-  head.className = 'sound-group-head';
-  head.innerHTML = `<h3>${title}</h3><span class="sound-group-count">${String(sounds.length).padStart(2, '0')} RECORDINGS</span>`;
-  const list = document.createElement('div');
-  list.className = 'sound-list';
-  sounds.forEach((sound) => list.append(makeSoundButton(sound)));
-  section.append(head, list);
-  host.append(section);
-}
-
-function voiceSounds(persona) {
-  const events = LINES[persona.id];
-  return Object.entries(events).flatMap(([event, lines]) => lines.map((line, index) => ({
-    id: `vox_${persona.id}_${event}${index + 1}`,
-    label: `${titleCase(event)} ${index + 1} // “${line}”`,
-    kind: persona.label,
-  })));
-}
-PERSONAS.forEach((persona) => renderGroup($('voice-groups'), persona.label, voiceSounds(persona)));
-
-const EFFECT_GROUPS = [
-  ['Weapon Handling', [
-    'dry', 'melee', 'knuckles', 'grenade', 'shot_rocket', 'shot_rifle', 'shot_smg', 'shot_lmg', 'shot_shotgun', 'shot_sniper',
-    'reload_bolt', 'reload_mag', 'reload_shell', 'rel_magout', 'rel_magin', 'rel_boltopen', 'rel_boltclose', 'rel_slide',
-    'rel_charge', 'rel_shell', 'rel_clip', 'rel_open', 'rel_close', 'rel_cellout', 'rel_cellin', 'rel_belt', 'rel_cover',
-    'rel_rocket', 'rel_pump', 'rel_ping', 'bolt_kar98_out', 'bolt_kar98_in', 'bolt_mosin_out', 'bolt_mosin_in',
-    'bolt_springfield_out', 'bolt_springfield_in', 'inspect_rifle', 'inspect_smg', 'inspect_pistol', 'inspect_sniper',
-    'inspect_lmg', 'inspect_shotgun', 'inspect_wonder', 'inspect_launcher',
-  ]],
-  ['The Undead', [
-    ...Array.from({ length: 10 }, (_, index) => `groan${index + 1}`),
-    ...Array.from({ length: 4 }, (_, index) => `snarl${index + 1}`),
-    ...Array.from({ length: 4 }, (_, index) => `zdeath${index + 1}`),
-    'dog_growl', 'dog_growl2', 'dog_howl',
-  ]],
-  ['Factory & Field', [
-    'ambience', 'step1', 'step2', 'step3', 'step4', 'hurt', 'hurt1', 'hurt2', 'hurt3', 'revive', 'hitmarker', 'explosion',
-    'board_tear', 'board_build', 'door_open', 'power', 'teleporter', 'tele_zap', 'trap', 'pap', 'pap_insert', 'pap_zap',
-    'pap_done', 'box_spin', 'teddy', 'monkey_windup', 'monkey_cymbal', 'buy', 'deny', 'ui',
-  ]],
-  ['Rounds & Power-Ups', [
-    'round_start', 'round_end', 'gameover', 'count_tick', 'count_go',
-    'ann_nuke', 'ann_maxammo', 'ann_double', 'ann_insta', 'ann_dogs',
-  ]],
-  ['Perk Machines', ['drink', 'bottle_break', 'belch', 'perk_jug', 'perk_speed', 'perk_dtap', 'perk_qr']],
-  ['Music & Atmosphere', ['menu_music', 'music_box']],
-];
-EFFECT_GROUPS.forEach(([title, ids]) => renderGroup($('effect-groups'), title, ids.map((id) => ({ id, label: titleCase(id), kind: title }))));
-$('original-music-control').append(makeSoundButton({
-  id: 'beauty-of-annihilation',
-  label: 'Beauty of Annihilation // Play World at War recording',
-  kind: 'World at War // Der Riese',
-}));
+renderArchiveCatalog({ makeSoundButton });
 
 renderClassFilters();
 renderWeaponGrid();

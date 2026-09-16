@@ -101,3 +101,8 @@ export function readSoldierGearSource() {
 export function readStyleSource() {
   return readSplitSource(root, 'style', '.css');
 }
+
+/** Asset Archive entry and its responsibility modules. */
+export function readAssetsPageSource() {
+  return readSplitSource(js, 'assets-page', '.js');
+}
