@@ -28,138 +28,14 @@
 // join, leave and rejoin all session without allocating a second helmet.
 import * as THREE from 'three';
 import { mergeGeometries } from '../../vendor/utils/BufferGeometryUtils.js';
+import { SOLDIER_LOOKS } from './SoldierGear/looks.js';
+import { materials } from './SoldierGear/materials.js';
+import { HEAD_SCALE, HEAD_REF } from './SoldierGear/constants.js';
 
-// The Head bone carries a deliberately oversized cartoon skull with ears that
-// stand a long way off it. SoldierVisual reshapes it to human proportion every
-// frame: down overall, and narrower still across X so the ears tuck in under
-// the headgear instead of sticking out past it.
-//
-// HEAD_SCALE is the uniform part and HEAD_SHAPE the per-axis remainder. A
-// helmet parented to the Head bone inherits both, so the mount at the bottom of
-// this file cancels the bone's world scale per axis before the gear is drawn.
-export const HEAD_SCALE = 0.42;
-// The size head gear was authored against. Change HEAD_SCALE and the helmets
-// follow, instead of floating off a head that is no longer that size.
-const HEAD_REF = 0.64;
-export const HEAD_SHAPE = [0.86, 1.0, 0.94];   // multiplies HEAD_SCALE, per axis
-
-// Limb slimming. X/Z only: the joints sit along Y, so touching Y would move
-// the knees and elbows away from the sculpted mesh and off the foot IK bones,
-// which are parented to the root rather than to the shins.
-// The shipped hands are cartoon-huge — a fist as wide as the skull. Scaling
-// the finger ROOTS shrinks every joint below them, which brings the hand back
-// to something that can plausibly hold a rifle grip. The palm rides on the
-// forearm bone and is slimmed with it.
-export const HAND_SCALE = 0.58;
-
-// The sculpted feet are cartoon-huge too. They carry no child bones, so unlike
-// the rest of the limbs they can be scaled outright without shearing anything
-// below them.
-export const FOOT_SCALE = 0.74;
-
-export const LIMB_SHAPE = {
-  // The shipped torso is a barrel — nearly as deep as it is wide, and half
-  // again too broad for a 1.78 m man. Narrowing it across X and Z does shear
-  // the arm chain slightly, because the shoulders are rotated children of the
-  // chest, but at this little anisotropy it is invisible and the silhouette
-  // gain is the difference between a soldier and a beer keg.
-  Hips: [0.84, 1, 0.88], Abdomen: [0.82, 1, 0.86], Torso: [0.80, 1, 0.84],
-  UpperArmL: [0.90, 1, 0.90], UpperArmR: [0.90, 1, 0.90],
-  LowerArmL: [0.88, 1, 0.88], LowerArmR: [0.88, 1, 0.88],
-  UpperLegL: [0.92, 1, 0.92], UpperLegR: [0.92, 1, 0.92],
-  LowerLegL: [0.92, 1, 0.92], LowerLegR: [0.92, 1, 0.92],
-};
-
-// Corrective rotations applied to the spine every frame, in radians about each
-// bone's own X axis (which is the world X axis at rest for all five).
-//
-// These are large on purpose. The shipped rig is a shambling corpse: measured
-// at rest, its chest bone leans 70 degrees forward and its neck another 65, so
-// the head hangs out in front of the knees. A soldier stands up. Undoing that
-// swings the shoulders back with the chest, which is exactly why the rifle
-// carry pose in player.js is solved by IK AFTER these are applied — the arms
-// then reach for where the hands should be rather than for where the corpse
-// happened to leave them.
-export const SPINE_FIX = {
-  Abdomen: -0.16,
-  Torso: -1.00,
-  Neck: -0.10,
-  Head: 0.86,
-};
-
-// ---------------------------------------------------------------------------
-// palettes
-// ---------------------------------------------------------------------------
-
-/**
- * One entry per playable character, in the order game.js resolves personas
- * (dempsey, nikolai, takeo, richtofen). `skin` and `hair` feed the atlas
- * recolour in player.js; everything else is worn.
- *
- * Silhouette is what reads at twenty metres, so the four differ first in
- * headgear and coat length and only then in colour.
- */
-export const SOLDIER_LOOKS = [
-  {
-    id: 'dempsey',
-    skin: 0xc79a72, hair: 0xc2a24e,           // USMC blond, high and tight
-    cloth: 0x59603f, clothDark: 0x3d4430, webbing: 0x6f6b4a,
-    leather: 0x33251a, hard: 0x474f3e, accent: 0x8a2f22,
-    headgear: 'helmet', coat: 'short', pack: 'haversack',
-    legs: 'leggings', beard: 'none', glasses: false,
-    build: { chest: 1.06, waist: 1.0, arm: 1.06 },
-  },
-  {
-    id: 'nikolai',
-    skin: 0xcaa07c, hair: 0x2b1d14,
-    cloth: 0x6a6142, clothDark: 0x494330, webbing: 0x6b6248,
-    leather: 0x3c2c1c, hard: 0x4a4438, accent: 0xa32a20,   // the red star
-    headgear: 'fieldcap_star', coat: 'quilted', pack: 'bedroll',
-    legs: 'boots', beard: 'full', glasses: false,
-    build: { chest: 1.16, waist: 1.14, arm: 1.12 },
-  },
-  {
-    id: 'takeo',
-    skin: 0xd0a87e, hair: 0x14100c,
-    cloth: 0x8a7d55, clothDark: 0x655c3e, webbing: 0x7d7150,
-    leather: 0x4e3822, hard: 0x5a5138, accent: 0x6b5a33,
-    headgear: 'havelock', coat: 'tunic', pack: 'small',
-    legs: 'puttees', beard: 'moustache', glasses: false,
-    build: { chest: 0.94, waist: 0.93, arm: 0.94 },
-  },
-  {
-    id: 'richtofen',
-    skin: 0xd3b795, hair: 0x30231a,
-    cloth: 0x353a3b, clothDark: 0x23282a, webbing: 0x2c2f30,
-    leather: 0x1d1916, hard: 0x2a2e30, accent: 0x9a8548,   // spectacle wire
-    headgear: 'peakcap', coat: 'long', pack: 'satchel',
-    legs: 'boots', beard: 'none', glasses: true,
-    build: { chest: 0.92, waist: 0.9, arm: 0.9 },
-  },
-];
-
-// ---------------------------------------------------------------------------
-// materials — one set per persona, shared by every avatar wearing that persona
-// ---------------------------------------------------------------------------
-
-const _matSets = new Map();
-function materials(look) {
-  let set = _matSets.get(look.id);
-  if (set) return set;
-  const std = (color, roughness, metalness = 0) =>
-    new THREE.MeshStandardMaterial({ color, roughness, metalness });
-  set = {
-    cloth: std(look.cloth, 0.95),
-    clothDark: std(look.clothDark, 0.93),
-    webbing: std(look.webbing, 0.9),
-    leather: std(look.leather, 0.62),
-    hard: std(look.hard, 0.45, 0.55),
-    accent: std(look.accent, 0.6, 0.25),
-    hair: std(look.hair, 0.94),
-  };
-  _matSets.set(look.id, set);
-  return set;
-}
+export {
+  HEAD_SCALE, HEAD_SHAPE, HAND_SCALE, FOOT_SCALE, LIMB_SHAPE, SPINE_FIX,
+} from './SoldierGear/constants.js';
+export { SOLDIER_LOOKS } from './SoldierGear/looks.js';
 
 // ---------------------------------------------------------------------------
 // primitive helpers — everything in metres, everything merged before it ships

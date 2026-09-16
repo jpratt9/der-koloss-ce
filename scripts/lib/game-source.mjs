@@ -14,8 +14,10 @@
 // js/fx/: the classes whose methods fx.js copies onto FX.prototype, and the
 // surface table and sprite textures they share. The post stack's GLSL is
 // js/render/shaders.js plus the modules in js/render/shaders/ that it
-// re-exports. The stylesheet is style.css plus the files in style/, which
-// index.html links in name order. A check reads all of one as a single string,
+// re-exports. The soldiers' gear is js/render/SoldierGear.js plus the modules
+// in js/render/SoldierGear/: the constants, palettes, materials and primitive
+// kit its wardrobe is built from. The stylesheet is style.css plus the files in
+// style/, which index.html links in name order. A check reads all of one as a single string,
 // so it keeps passing when the text it pins moves between files.
 import { readFileSync, readdirSync } from 'node:fs';
 
@@ -80,6 +82,11 @@ export function readFxSource() {
 /** js/render/shaders.js, then every .js file under js/render/shaders/ in path order, joined with newlines. */
 export function readShadersSource() {
   return readSplitSource(new URL('render/', js), 'shaders', '.js');
+}
+
+/** js/render/SoldierGear.js, then every .js file under js/render/SoldierGear/ in path order, joined with newlines. */
+export function readSoldierGearSource() {
+  return readSplitSource(new URL('render/', js), 'SoldierGear', '.js');
 }
 
 /** style.css, then style/*.css in name order — the order index.html links them, which is the cascade order. */
