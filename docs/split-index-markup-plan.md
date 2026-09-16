@@ -6,6 +6,12 @@ remains the sole offender at 661 lines. It remains maintained static HTML, not a
 generated artifact. No runtime or build changes are needed for this decision.
 The conditional static-composition design below remains an unimplemented option.
 
+Rechecked for the latest `/splitlargefiles` request on September 16, 2026:
+the counter still reports only `index.html` at 661 lines. A fresh full read of
+the document, its boot module, hosting configuration and source-reader references
+confirms the recommendation below. No further mechanical split is available;
+the previously adopted exception stands. This pass changes only this plan.
+
 Command: `python3 /Users/john/.agents/skills/splitlargefiles/scripts/count_lines.py . --threshold 500`
 
 ```text
